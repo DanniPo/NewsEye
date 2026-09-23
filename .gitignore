@@ -1,0 +1,35 @@
+# --- virtual environment -------------------------------------------------
+# Several GB of torch CUDA libraries. Recreate with requirements.txt.
+.venv/
+venv/
+env/
+
+# --- python bytecode -----------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- runtime output ------------------------------------------------------
+# The passive tier appends to this on every scheduled run.
+logs/
+
+# Intermediate bundle written by export_review.py and read by build_site.py.
+# Large (~900KB), regenerated in one command, and it carries verbatim article
+# excerpts that this project deliberately does not retain.
+review_export.json
+
+# Written by review_clusters.py when recording manual verdicts.
+cluster_review.csv
+cluster_visualization.png
+
+# --- local machine state -------------------------------------------------
+# Per-machine tool permissions, not project configuration.
+.claude/settings.local.json
+
+# --- editor / OS ---------------------------------------------------------
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.swp

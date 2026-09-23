@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Newseye - Kenyan media coverage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600;6..72,700&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+:root{--bg:#F4F6F8;--panel:#FFFFFF;--rail:#0E1B2A;--rail-2:#16283C;--ink:#16202B;
+--muted:#667585;--faint:#93A0AD;--rule:#E4E9EE;--accent:#12B39B;--accent-soft:#E2F7F3;
+--gap:#C2571E;--gap-soft:#FDF0E6;--ok:#1F7A55;--ok-soft:#E6F4EC;
+--serif:"Newsreader",Georgia,serif;--sans:"Source Sans 3",ui-sans-serif,system-ui,sans-serif}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0B1219;
+--panel:#131D27;--rail:#0A121B;--rail-2:#16242F;--ink:#E7ECF1;--muted:#93A0AD;
+--faint:#6B7885;--rule:#22303C;--accent:#3FD3BA;--accent-soft:#12312C;--gap:#E0954F;
+--gap-soft:#33240F;--ok:#57B98A;--ok-soft:#12301F}}
+:root[data-theme=dark]{--bg:#0B1219;--panel:#131D27;--rail:#0A121B;--rail-2:#16242F;
+--ink:#E7ECF1;--muted:#93A0AD;--faint:#6B7885;--rule:#22303C;--accent:#3FD3BA;
+--accent-soft:#12312C;--gap:#E0954F;--gap-soft:#33240F;--ok:#57B98A;--ok-soft:#12301F}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;
+line-height:1.55;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+
+/* ---- shell ---- */
+.app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:100vh}
+.rail{background:var(--rail);color:#DCE5ED;padding:18px 14px;display:flex;
+flex-direction:column;gap:22px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:9px;padding:4px 6px 0}
+.brand .glyph{width:30px;height:30px;border-radius:8px;background:var(--accent);
+display:grid;place-items:center;flex:none}
+.brand .glyph svg{width:17px;height:17px;display:block}
+.brand b{font-size:16.5px;letter-spacing:-.01em;color:#fff;font-weight:700}
+nav{display:flex;flex-direction:column;gap:2px}
+nav a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;
+font-size:13.5px;color:#9FB0C0;font-weight:600}
+nav a svg{width:15px;height:15px;flex:none;opacity:.85}
+nav a:hover{background:var(--rail-2);color:#E8EFF5}
+nav a.on{background:var(--rail-2);color:#fff}
+nav a.on svg{opacity:1;color:var(--accent)}
+nav a .n{margin-left:auto;font-size:11px;font-weight:700;color:var(--accent)}
+.rail .who{margin-top:auto;background:var(--rail-2);border-radius:9px;padding:10px 11px;
+display:flex;align-items:center;gap:9px}
+.rail .who .av{width:29px;height:29px;border-radius:50%;background:var(--accent);
+display:grid;place-items:center;font-size:12px;font-weight:700;color:#06231E;flex:none}
+.rail .who div span{display:block;font-size:12.5px;font-weight:700;color:#fff}
+.rail .who div small{font-size:11px;color:#8496A6}
+
+.main{min-width:0;display:flex;flex-direction:column}
+.topbar{display:flex;gap:12px;align-items:center;padding:13px 22px;background:var(--panel);
+border-bottom:1px solid var(--rule);position:sticky;top:0;z-index:5}
+.search{flex:1;max-width:400px;display:flex;align-items:center;gap:8px;background:var(--bg);
+border:1px solid var(--rule);border-radius:8px;padding:7px 11px}
+.search svg{width:14px;height:14px;color:var(--faint);flex:none}
+.search input{border:0;background:transparent;color:var(--ink);font:inherit;
+font-size:13.5px;width:100%;outline:none}
+.stamp{margin-left:auto;font-size:12.5px;color:var(--muted);border:1px solid var(--rule);
+border-radius:8px;padding:6px 11px;white-space:nowrap}
+.content{padding:20px 22px 64px;max-width:1220px}
+
+/* ---- honesty banner ---- */
+.note{background:var(--accent-soft);border:1px solid var(--accent);border-radius:9px;
+padding:10px 13px;font-size:13px;color:var(--ink);margin-bottom:18px}
+.note b{font-weight:700}
+
+/* ---- stat cards ---- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:13px;
+margin-bottom:22px}
+.stat{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:14px 15px}
+.stat .row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.stat .lbl{font-size:12.5px;color:var(--muted);font-weight:600;line-height:1.35}
+.stat .ico{width:27px;height:27px;border-radius:7px;background:var(--accent-soft);
+display:grid;place-items:center;flex:none}
+.stat .ico svg{width:14px;height:14px;color:var(--accent)}
+.stat .big{font-family:var(--serif);font-size:30px;font-weight:700;letter-spacing:-.02em;
+margin:6px 0 2px;font-variant-numeric:tabular-nums}
+.stat .sub{font-size:11.5px;color:var(--faint)}
+.stat .sub em{font-style:normal;color:var(--ok);font-weight:700}
+
+/* ---- two column body ---- */
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:18px;align-items:start}
+.colhead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+margin:0 0 11px}
+.colhead h2{font-family:var(--serif);font-size:19px;font-weight:700;margin:0;
+letter-spacing:-.01em}
+.colhead .hint{font-size:12.5px;color:var(--muted)}
+
+/* ---- story cards ---- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:13px}
+.tile{background:var(--panel);border:1px solid var(--rule);border-radius:10px;
+padding:13px 14px;display:flex;flex-direction:column;gap:9px}
+.tile:hover{border-color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+background:var(--bg);border:1px solid var(--rule);color:var(--muted);
+border-radius:5px;padding:3px 6px}
+.tile h3{font-family:var(--serif);font-size:16px;font-weight:600;line-height:1.32;
+margin:0;letter-spacing:-.005em}
+.srcline{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.srcline svg{width:12px;height:12px;flex:none;opacity:.7}
+.bar{display:flex;flex-direction:column;gap:5px}
+.bar .keys{display:flex;justify-content:space-between;font-size:10.5px;font-weight:700;
+color:var(--muted)}
+.bar .keys .g{color:var(--gap)}
+.bar .track{height:5px;border-radius:3px;background:var(--rule);overflow:hidden;display:flex}
+.bar .track i{display:block;height:100%}
+.bar .track i.all{background:var(--ok)}
+.bar .track i.some{background:var(--gap)}
+.badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+.badge{font-size:11px;font-weight:700;border-radius:20px;padding:3px 9px;
+display:inline-flex;align-items:center;gap:5px}
+.badge.gap{background:var(--gap-soft);color:var(--gap)}
+.badge.fig{background:var(--accent-soft);color:var(--accent)}
+.badge.ok{background:var(--ok-soft);color:var(--ok)}
+.badge.loose{background:var(--gap-soft);color:var(--gap)}
+.empty-grid{background:var(--panel);border:1px dashed var(--rule);border-radius:10px;
+padding:26px;text-align:center;color:var(--muted);font-size:13.5px}
+
+/* ---- right rail panels ---- */
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:10px;
+padding:14px 15px;margin-bottom:13px}
+.panel h4{font-size:13.5px;font-weight:700;margin:0 0 10px}
+.rank{display:flex;flex-direction:column;gap:9px}
+.rank .r{display:flex;gap:9px;align-items:flex-start}
+.rank .r b{width:19px;height:19px;border-radius:5px;background:var(--accent-soft);
+color:var(--accent);font-size:11px;font-weight:700;display:grid;place-items:center;flex:none;
+margin-top:1px}
+.rank .r span{font-size:13px;font-weight:600;line-height:1.3;display:block}
+.rank .r small{font-size:11.5px;color:var(--faint);display:block}
+.panel.quiet{background:var(--bg)}
+.panel.quiet p{font-size:12.5px;color:var(--muted);margin:0 0 8px;line-height:1.5}
+.panel.quiet p:last-child{margin-bottom:0}
+.panel ul.plain{margin:0;padding-left:16px;font-size:12.5px;color:var(--muted)}
+.panel ul.plain li{margin-bottom:5px}
+
+/* ---- story detail ---- */
+.back{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--accent);
+font-weight:700;margin-bottom:14px}
+.sheet{background:var(--panel);border:1px solid var(--rule);border-radius:11px;
+padding:22px 24px;max-width:900px}
+.sheet header h1{font-family:var(--serif);font-size:clamp(21px,3.4vw,30px);font-weight:700;
+line-height:1.16;letter-spacing:-.015em;margin:0 0 9px;text-wrap:balance}
+.sheet header p.lede{font-size:14px;color:var(--muted);margin:0 0 4px}
+h3.sub{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;
+color:var(--muted);margin:26px 0 7px;padding-bottom:6px;border-bottom:1px solid var(--rule)}
+p.hint{font-size:13.5px;color:var(--muted);margin:8px 0 13px;max-width:70ch}
+.loose{border:1px solid var(--gap);background:var(--gap-soft);border-radius:9px;
+padding:12px 14px;margin:14px 0;font-size:13.5px}
+.loose b{color:var(--gap)}
+.heads{margin:0;padding:0;list-style:none}
+.heads li{display:grid;grid-template-columns:148px minmax(0,1fr);gap:13px;padding:10px 0;
+border-bottom:1px solid var(--rule);align-items:baseline}
+.heads li:first-child{border-top:1px solid var(--rule)}
+.hsrc{font-size:12.5px;font-weight:700}
+.hsrc .unread{display:block;font-size:10px;font-weight:700;text-transform:uppercase;
+letter-spacing:.05em;color:var(--gap);margin-top:2px}
+.heads a{font-family:var(--serif);font-size:15px;line-height:1.38}
+.heads a:hover{text-decoration:underline;text-decoration-color:var(--accent)}
+.scroll{overflow-x:auto;margin:6px 0}
+table{border-collapse:collapse;width:100%;min-width:520px;font-size:13.5px}
+th,td{padding:9px 7px;border-bottom:1px solid var(--rule)}
+thead th{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+color:var(--muted);text-align:center;vertical-align:bottom;border-bottom:2px solid var(--ink)}
+thead th:first-child{text-align:left;width:48%}
+thead th.na{color:var(--faint)}
+td.f{font-family:var(--serif);font-size:14px;line-height:1.4}
+td.m{text-align:center;font-size:15px;font-weight:700}
+td.m.y{color:var(--ok)}td.m.n{color:var(--gap);background:var(--gap-soft)}
+td.m.q{color:var(--faint);background:var(--bg);font-weight:400}
+tfoot td{font-size:12px;color:var(--muted);border-bottom:none;padding-top:10px;
+text-align:center;font-variant-numeric:tabular-nums}
+tfoot td:first-child{text-align:left;font-weight:700;color:var(--ink)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);padding:2px 0 12px}
+.legend i{font-style:normal;font-weight:700}
+.legend i.y{color:var(--ok)}.legend i.n{color:var(--gap)}.legend i.q{color:var(--faint)}
+.quote{display:grid;grid-template-columns:132px minmax(0,1fr);gap:13px;padding:11px 0;
+border-bottom:1px solid var(--rule);align-items:start}
+.qsrc{display:block;font-size:12.5px;font-weight:700}
+.qtone{display:block;font-size:11px;color:var(--muted)}
+.quote blockquote{margin:0;font-family:var(--serif);font-size:14px;line-height:1.45;
+color:var(--ink)}
+.qmark{display:block;font-size:11px;color:var(--faint);margin-top:4px;font-family:var(--sans)}
+.fig{border:1px solid var(--rule);border-radius:9px;padding:11px 13px;margin-bottom:9px;
+background:var(--bg)}
+.fhead{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;margin-bottom:5px}
+.fval{font-family:var(--serif);font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
+.fsrc{font-size:12.5px;font-weight:700;color:var(--muted)}
+.ftag{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+background:var(--panel);border:1px solid var(--rule);color:var(--muted);
+border-radius:4px;padding:2px 5px}
+.fctx{font-size:13px;color:var(--muted);margin:0;line-height:1.5}
+.fctx a{color:var(--accent);font-weight:700;white-space:nowrap}
+.empty{font-size:13.5px;color:var(--muted);font-style:italic}
+footer.end{margin-top:30px;padding-top:14px;border-top:1px solid var(--rule);
+font-size:12.5px;color:var(--faint);line-height:1.55}
+
+@media(max-width:1080px){.cols{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:820px){
+.app{grid-template-columns:1fr}
+.rail{position:static;height:auto;flex-direction:row;align-items:center;gap:12px;
+overflow-x:auto;padding:10px 14px}
+.rail nav{flex-direction:row;gap:4px}
+.rail .who{display:none}
+.content{padding:16px 16px 56px}
+.topbar{padding:11px 16px}.stamp{display:none}
+.sheet{padding:17px 16px;border-radius:9px}
+.quote{grid-template-columns:minmax(0,1fr);gap:5px}
+.heads li{grid-template-columns:minmax(0,1fr);gap:3px}
+}
+</style>
+</head>
+<body>
+<div class="app"><aside class="rail"><div class="brand"><span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="#052A25" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12S19 18.5 12 18.5 1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="2.6"/></svg></span><b>Newseye</b></div><nav><a href="index.html" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dashboard</span></a><a href="index.html#stories"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/></svg><span>Stories</span></a><a href="index.html#outlets"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19"/><path d="M12 2.5a15 15 0 0 1 0 19a15 15 0 0 1 0-19Z"/></svg><span>Outlets</span></a><a href="index.html#gaps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H4.5A1.5 1.5 0 0 0 3 4.5v15A1.5 1.5 0 0 0 4.5 21H9"/><path d="M15 3h4.5A1.5 1.5 0 0 1 21 4.5v15a1.5 1.5 0 0 1-1.5 1.5H15"/><path d="M12 8v8"/></svg><span>Coverage gaps</span></a><a href="index.html#figures"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 7.5 21M16.5 3 15 21M3.5 8.5h17M3 15.5h17"/></svg><span>Figures</span></a><a href="index.html#about"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.5v.01"/></svg><span>What this is not</span></a></nav><div class="who"><span class="av">KE</span><div><span>Kenyan reader</span><small>Demonstration</small></div></div></aside><div class="main"><div class="topbar"><label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg><input type="search" placeholder="Filter stories" id="q" autocomplete="off"></label><span class="stamp">Run of 2026-09-23 00:27</span></div><div class="content"><div class="note"><b>Demonstration.</b> Every number and quotation below comes from a real Newseye run over 12 Kenyan RSS feeds, 2026-09-23 00:27. Nothing here is mock data.</div><div class="stats"><div class="stat"><div class="row"><span class="lbl">Stories tracked</span><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/></svg></span></div><div class="big">277</div><div class="sub">of 333 groups &middot; <em>174 span 2+ outlets</em></div></div><div class="stat"><div class="row"><span class="lbl">Articles ingested</span><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg></span></div><div class="big">2,216</div><div class="sub"><em>+344 in 24h</em> &middot; unattended since 20 Sept</div></div><div class="stat"><div class="row"><span class="lbl">Facts not carried by all</span><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H4.5A1.5 1.5 0 0 0 3 4.5v15A1.5 1.5 0 0 0 4.5 21H9"/><path d="M15 3h4.5A1.5 1.5 0 0 1 21 4.5v15a1.5 1.5 0 0 1-1.5 1.5H15"/><path d="M12 8v8"/></svg></span></div><div class="big">37</div><div class="sub">across the 13 stories shown here</div></div><div class="stat"><div class="row"><span class="lbl">Outlets tracked</span><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19"/><path d="M12 2.5a15 15 0 0 1 0 19a15 15 0 0 1 0-19Z"/></svg></span></div><div class="big">12</div><div class="sub">RSS polled every 2 hours &middot; <em>12 filed today</em></div></div></div><div class="cols"><div><div class="colhead" id="stories"><h2>Kenyan news stories</h2><span class="hint"><span id="shown">13 stories</span> &middot; most outlets first</span></div><div class="grid"><a class="tile" href="story-1.html" data-find="explainer: what nairobi must deliver to host 2029 world athletics championships 2029 world athletics sports k24 digital kbc kenya news nation africa the east african the kenya times"><div class="chips"><span class="chip">Sports</span><span class="chip">K24 Digital</span><span class="chip">KBC</span></div><h3>EXPLAINER: What Nairobi Must Deliver to Host 2029 World Athletics Championships</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>6 outlets covered this &middot; 4 readable</span></div><div class="bar"><div class="keys"><span>1 carried by all</span><span class="g">2 not</span></div><div class="track"><i class="all" style="width:33%"></i><i class="some" style="width:67%"></i></div></div><div class="badges"><span class="badge gap">2 facts not carried by all</span><span class="badge fig">2 figures to compare</span></div></a><a class="tile" href="story-226.html" data-find="world athletics: murkomen dismisses doping claims 2029 world athletics doping claims sports capital fm kbc kenya news nairobi wire nation africa"><div class="chips"><span class="chip">Sports</span><span class="chip">Capital FM</span><span class="chip">KBC</span></div><h3>World Athletics: Murkomen dismisses doping claims</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>5 outlets covered this &middot; 5 readable</span></div><div class="bar"><div class="keys"><span>0 carried by all</span><span class="g">7 not</span></div><div class="track"><i class="all" style="width:0%"></i><i class="some" style="width:100%"></i></div></div><div class="badges"><span class="badge gap">7 facts not carried by all</span><span class="badge fig">6 figures to compare</span></div></a><a class="tile" href="story-220.html" data-find="ruto departs for unga meeting in us as kenya eyes billions in investment sh2.2 trillion investment agenda politics capital fm kbc nairobi wire nation africa people daily"><div class="chips"><span class="chip">Politics</span><span class="chip">Capital FM</span><span class="chip">KBC</span></div><h3>Ruto departs for UNGA meeting in US as Kenya eyes billions in investment</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>5 outlets covered this &middot; 4 readable</span></div><div class="bar"><div class="keys"><span>1 carried by all</span><span class="g">6 not</span></div><div class="track"><i class="all" style="width:14%"></i><i class="some" style="width:86%"></i></div></div><div class="badges"><span class="badge gap">6 facts not carried by all</span><span class="badge fig">15 figures to compare</span></div></a><a class="tile" href="story-290.html" data-find="shakahola massacre: 443 bodies face disposal as kilifi gives families 21-day deadline over 400 shakahola bodies international capital fm kbc nairobi wire nation africa people daily"><div class="chips"><span class="chip">International</span><span class="chip">Capital FM</span><span class="chip">KBC</span></div><h3>Shakahola massacre: 443 bodies face disposal as Kilifi gives families 21-day deadline</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>5 outlets covered this &middot; 3 readable</span></div><div class="bar"><div class="keys"><span>1 carried by all</span><span class="g">4 not</span></div><div class="track"><i class="all" style="width:20%"></i><i class="some" style="width:80%"></i></div></div><div class="badges"><span class="badge gap">4 facts not carried by all</span><span class="badge fig">11 figures to compare</span></div></a><a class="tile" href="story-269.html" data-find="woman visiting detained boyfriend arrested after police find bhang concealed in bread dci arrests woman security capital fm kbc nairobi wire nation africa people daily"><div class="chips"><span class="chip">Security</span><span class="chip">Capital FM</span><span class="chip">KBC</span></div><h3>Woman visiting detained boyfriend arrested after police find bhang concealed in bread</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>5 outlets covered this &middot; 3 readable</span></div><div class="bar"><div class="keys"><span>2 carried by all</span><span class="g">1 not</span></div><div class="track"><i class="all" style="width:67%"></i><i class="some" style="width:33%"></i></div></div><div class="badges"><span class="badge gap">1 fact not carried by all</span><span class="badge fig">10 figures to compare</span></div></a><a class="tile" href="story-2.html" data-find="treasury to appeal high court ruling nullifying safaricom shares sales safaricom shares sales business business daily africa kenya news nation africa people daily the sharp daily"><div class="chips"><span class="chip">Business</span><span class="chip">Business Daily Africa</span><span class="chip">Kenya News</span></div><h3>Treasury to appeal High Court ruling nullifying Safaricom shares sales</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>5 outlets covered this &middot; 3 readable</span></div><div class="bar"><div class="keys"><span>1 carried by all</span><span class="g">1 not</span></div><div class="track"><i class="all" style="width:50%"></i><i class="some" style="width:50%"></i></div></div><div class="badges"><span class="badge gap">1 fact not carried by all</span><span class="badge fig">12 figures to compare</span></div></a><a class="tile" href="story-215.html" data-find="kenya’s agnes ngetich smashes half marathon world record kenya’s agnes ngetich sports k24 digital kbc nation africa the kenya times"><div class="chips"><span class="chip">Sports</span><span class="chip">K24 Digital</span><span class="chip">KBC</span></div><h3>Kenya’s Agnes Ngetich smashes half marathon world record</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>4 outlets covered this &middot; 3 readable</span></div><div class="bar"><div class="keys"><span>2 carried by all</span><span class="g">3 not</span></div><div class="track"><i class="all" style="width:40%"></i><i class="some" style="width:60%"></i></div></div><div class="badges"><span class="badge gap">3 facts not carried by all</span><span class="badge fig">4 figures to compare</span></div></a><a class="tile" href="story-219.html" data-find="president ruto urges africa to move from ai consumption to creation africa-financing-africa international kbc kenya news nation africa people daily"><div class="chips"><span class="chip">International</span><span class="chip">KBC</span><span class="chip">Kenya News</span></div><h3>President Ruto urges Africa to move from AI consumption to creation</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>4 outlets covered this &middot; 3 readable</span></div><div class="bar"><div class="keys"><span>0 carried by all</span><span class="g">4 not</span></div><div class="track"><i class="all" style="width:0%"></i><i class="some" style="width:100%"></i></div></div><div class="badges"><span class="badge gap">4 facts not carried by all</span></div></a><a class="tile" href="story-311.html" data-find="ruto, rubio discuss trade, ai and regional security during new york talks state marco rubio politics capital fm kbc nation africa people daily"><div class="chips"><span class="chip">Politics</span><span class="chip">Capital FM</span><span class="chip">KBC</span></div><h3>Ruto, Rubio discuss trade, AI and regional security during New York talks</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>4 outlets covered this &middot; 3 readable</span></div><div class="bar"><div class="keys"><span>0 carried by all</span><span class="g">3 not</span></div><div class="track"><i class="all" style="width:0%"></i><i class="some" style="width:100%"></i></div></div><div class="badges"><span class="badge gap">3 facts not carried by all</span><span class="badge fig">2 figures to compare</span></div></a><a class="tile" href="story-105.html" data-find="gov’t delivers milk coolers to murang’a dairy cooperatives, urges fair pay for farmers over 18,000 murang’a dairy farmers politics kbc kenya news nairobi wire people daily"><div class="chips"><span class="chip">Politics</span><span class="chip">KBC</span><span class="chip">Kenya News</span></div><h3>Gov’t delivers milk coolers to Murang’a Dairy cooperatives, urges fair pay for farmers</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>4 outlets covered this &middot; 3 readable</span></div><div class="bar"><div class="keys"><span>1 carried by all</span><span class="g">2 not</span></div><div class="track"><i class="all" style="width:33%"></i><i class="some" style="width:67%"></i></div></div><div class="badges"><span class="badge gap">2 facts not carried by all</span><span class="badge fig">13 figures to compare</span></div></a><a class="tile" href="story-3.html" data-find="kenya urged to turn ai potential into jobs, productivity jobs technology business daily africa kbc kenya news people daily"><div class="chips"><span class="chip">Technology</span><span class="chip">Business Daily Africa</span><span class="chip">KBC</span></div><h3>Kenya urged to turn AI potential into jobs, productivity</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>4 outlets covered this &middot; 3 readable</span></div><div class="bar"><div class="keys"><span>2 carried by all</span><span class="g">3 not</span></div><div class="track"><i class="all" style="width:40%"></i><i class="some" style="width:60%"></i></div></div><div class="badges"><span class="badge gap">3 facts not carried by all</span><span class="badge fig">5 figures to compare</span></div></a><a class="tile" href="story-19.html" data-find="utumishi girls fire: judge gives reason for denying students bail eight utumishi girls students politics capital fm nairobi wire nation africa people daily"><div class="chips"><span class="chip">Politics</span><span class="chip">Capital FM</span><span class="chip">Nairobi Wire</span></div><h3>Utumishi Girls Fire: Judge Gives Reason for Denying Students Bail</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>4 outlets covered this &middot; 3 readable</span></div><div class="bar"><div class="keys"><span>4 carried by all</span><span class="g">0 not</span></div><div class="track"><i class="all" style="width:100%"></i><i class="some" style="width:0%"></i></div></div><div class="badges"><span class="badge ok">every fact carried by all</span><span class="badge fig">10 figures to compare</span></div></a><a class="tile" href="story-127.html" data-find="cracks, chaos and a countdown: karibu homes families flee condemned units in mavoko karibu homes families politics business daily africa capital fm nation africa people daily"><div class="chips"><span class="chip">Politics</span><span class="chip">Business Daily Africa</span><span class="chip">Capital FM</span></div><h3>Cracks, chaos and a countdown: Karibu homes families flee condemned units in Mavoko</h3><div class="srcline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg><span>4 outlets covered this &middot; 3 readable</span></div><div class="bar"><div class="keys"><span>0 carried by all</span><span class="g">1 not</span></div><div class="track"><i class="all" style="width:0%"></i><i class="some" style="width:100%"></i></div></div><div class="badges"><span class="badge gap">1 fact not carried by all</span><span class="badge loose">loose grouping</span></div></a></div><div class="empty-grid" id="nores" style="display:none">No story matches that.</div></div><div><div class="panel" id="outlets"><h4>Most present outlets</h4><div class="rank"><div class="r"><b>1</b><div><span>Nation Africa</span><small>17 articles here &middot; 7 readable</small></div></div><div class="r"><b>2</b><div><span>People Daily</span><small>15 articles here &middot; 0 readable</small></div></div><div class="r"><b>3</b><div><span>KBC</span><small>13 articles here &middot; 13 readable</small></div></div><div class="r"><b>4</b><div><span>Capital FM</span><small>9 articles here &middot; 9 readable</small></div></div><div class="r"><b>5</b><div><span>Kenya News</span><small>7 articles here &middot; 7 readable</small></div></div><div class="r"><b>6</b><div><span>Nairobi Wire</span><small>6 articles here &middot; 6 readable</small></div></div></div></div><div class="panel quiet" id="gaps"><h4>Why "not carried" is not "wrong"</h4><p>An outlet can leave a fact out because it judged it unimportant, because it ran a shorter piece, or because it filed earlier. None of those is an error.</p><p>The gap is worth seeing anyway: it is the difference between the story you got and the story that was available.</p></div><div class="panel quiet"><h4>Could not be read</h4><p>These outlets covered stories here but their article text was paywalled or blocked, so they are never counted as having omitted anything:</p><ul class="plain"><li>Business Daily Africa</li><li>Nation Africa</li><li>People Daily</li><li>The East African</li></ul></div><div class="panel quiet" id="about"><h4>What this does not do</h4><p>It does not detect contradictions. Across 151 story groups it found none between two different outlets, so there is no count for them.</p><p>It does not label an outlet supportive or critical, score accuracy, or rank outlets by trust. It does not decide which of two numbers is right.</p><p id="figures">Where two outlets publish figures too far apart to be one quantity, both are shown with their sentences and neither is called wrong.</p></div></div></div></div></div></div>
+<script>
+(function(){
+  var q=document.getElementById('q'); if(!q) return;
+  var tiles=[].slice.call(document.querySelectorAll('.tile'));
+  var count=document.getElementById('shown');
+  q.addEventListener('input',function(){
+    var t=q.value.trim().toLowerCase(), n=0;
+    tiles.forEach(function(el){
+      var hit=!t||(el.dataset.find||'').indexOf(t)>-1;
+      el.style.display=hit?'':'none'; if(hit)n++;
+    });
+    if(count) count.textContent=n+(n===1?' story':' stories');
+  });
+})();
+</script>
+</body>
+</html>

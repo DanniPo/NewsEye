@@ -1,0 +1,27 @@
+# Newseye dependencies, pinned to the versions the results were measured on.
+#
+# torch is listed without the +cu130 local version tag so that `pip install -r`
+# works on a CPU-only machine. The GPU build is worth having for the active
+# tier but nothing requires it - every module falls back to CPU. To get CUDA:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu130
+#
+# After installing, fetch the spaCy model (it is not a pip dependency):
+#   python install_spacy_model.py
+
+feedparser==6.0.14
+python-dateutil==2.9.0.post0
+psycopg2-binary==2.9.13
+requests==2.34.2
+trafilatura==2.2.0
+
+torch==2.12.0
+transformers==5.17.0
+sentence-transformers==6.0.1
+spacy==3.8.16
+
+hdbscan==0.8.44
+numpy==2.5.3
+scikit-learn==1.9.0
+
+# only used by backend/scripts/visualize_clusters.py
+matplotlib==3.11.1
