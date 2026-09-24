@@ -1,0 +1,11 @@
+# Normalise line endings in the repository so a Windows checkout does not
+# rewrite every file and turn future diffs into noise. Without this, git add
+# warned "LF will be replaced by CRLF" on all 26 source files.
+* text=auto eol=lf
+
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+
+*.png   binary
+*.jpg   binary
+*.pdf   binary
