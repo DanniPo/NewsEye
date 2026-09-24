@@ -186,8 +186,8 @@ above — `density_curve.py` (yield scaling), `benchmark_separation.py` and
 - **Model loading dominates runtime** — about 71% of a passive run is spent
   importing torch to do ~36s of work. A long-lived worker would fix it.
 
-##Onedrive move
-- **Project was initially on Onedrive which increased the load times of the project overall so
+## Onedrive move
+- Project was initially on Onedrive which increased the load times of the project overall so
   benchmark numbers shall be updated accordingly.
 
 Final-year project, Strathmore University.
