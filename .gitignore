@@ -26,7 +26,7 @@ cluster_visualization.png
 # --- local machine state -------------------------------------------------
 # Per-machine tool permissions, not project configuration.
 .claude/settings.local.json
-
+.env
 # --- editor / OS ---------------------------------------------------------
 .vscode/
 .idea/
