@@ -82,13 +82,11 @@ pip install -r requirements.txt
 python install_spacy_model.py   # fetches en_core_web_sm
 ```
 
-Create a database named `articles`, enable pgvector, and set the password in the
-environment — it is never stored in the repo:
+Create an empty database named `articles`, then point the password at it — the
+password is never stored in the repo (see `.env.example`):
 
 ```sql
 CREATE DATABASE articles;
-\c articles
-CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
 ```bash
@@ -96,8 +94,15 @@ export DB_PASSWORD=...           # Windows: $env:DB_PASSWORD = "..."
 python -m backend.db.migrations
 ```
 
+That one command creates the pgvector extension, all four tables and every
+index, and is safe to re-run. Nothing else is needed to get a working schema.
+
 Connection settings other than the password are in `backend/db/connection.py`;
 feeds, thresholds and model names are in `backend/config.py`.
+
+The ~1.9GB of models are downloaded from HuggingFace on first use and cached in
+`~/.cache/huggingface` — outside the repository and outside any synced folder.
+No cloud storage is involved.
 
 ## Running
 
@@ -134,9 +139,14 @@ outstanding piece of work.
 ## Tests
 
 ```bash
+pip install -r requirements-dev.txt
+ruff check backend                          # 0 findings
 python -m backend.scripts.test_casualties   # 15/15
 python -m backend.scripts.test_figures      # 14/14 + 1 documented limitation
 ```
+
+All four run on every push via `.github/workflows/ci.yml`, along with a job that
+builds the schema from an empty pgvector database and asserts the result.
 
 Both assert on the shipping figure digest. They were rewritten after the
 adjudicator was removed, and immediately caught a real bug: the digest was
