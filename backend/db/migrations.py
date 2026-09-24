@@ -1,10 +1,117 @@
-"""Idempotent schema additions.
+"""Create and update the schema. Idempotent: safe to re-run at any time.
 
-The base tables were created by hand, so this only carries the columns added
-since. Every statement is safe to re-run: `python -m backend.db.migrations`.
+    python -m backend.db.migrations                  # create/update everything
+    python -m backend.db.migrations --drop-retired   # remove dead columns
+
+BASE_SCHEMA builds the database from nothing, so a fresh clone needs only an
+empty database. It did not used to: the four tables were created by hand during
+early development and only the later columns were recorded here, which meant the
+repository could not reproduce its own schema.
+
+MIGRATIONS carries everything added after those tables existed. The split is
+kept rather than folded together because the ALTERs document when and why each
+column appeared, which the CREATE TABLEs no longer show.
 """
-from backend.config import ANALYSIS_PENDING
+from backend.config import ANALYSIS_PENDING, EMBEDDING_DIM
 from backend.db.connection import get_cursor
+
+BASE_SCHEMA = [
+    # pgvector supplies the embedding column type and the HNSW index
+    ("extension: vector", "CREATE EXTENSION IF NOT EXISTS vector"),
+
+    # One row per article ever seen. Append-only: nothing in the pipeline
+    # updates or deletes a row. Bodies are never stored - the active tier
+    # fetches text transiently and discards it.
+    ("table: articles", f"""
+        CREATE TABLE IF NOT EXISTS articles (
+            id              serial PRIMARY KEY,
+            identifier      text NOT NULL UNIQUE,
+            source_name     text NOT NULL,
+            title           text NOT NULL,
+            url             text NOT NULL,
+            url_canon       text NOT NULL,
+            published_utc   timestamptz NOT NULL,
+            snippet         text,
+            category        text,
+            category_model  text,
+            embedding       vector({EMBEDDING_DIM}),
+            inserted_at_utc timestamptz NOT NULL DEFAULT now()
+        )
+    """),
+
+    # Rebuilt from scratch on every clustering run (TRUNCATE ... RESTART
+    # IDENTITY CASCADE in nlp/clustering.py), so ids are not stable across runs.
+    ("table: clusters", f"""
+        CREATE TABLE IF NOT EXISTS clusters (
+            id              serial PRIMARY KEY,
+            topic_label     text,
+            article_count   integer,
+            coherence       real,
+            label_model     text,
+            analysis_status text NOT NULL DEFAULT '{ANALYSIS_PENDING}',
+            analysis_error  text,
+            created_at      timestamptz DEFAULT now()
+        )
+    """),
+
+    ("table: cluster_members", """
+        CREATE TABLE IF NOT EXISTS cluster_members (
+            id         serial PRIMARY KEY,
+            cluster_id integer NOT NULL REFERENCES clusters(id) ON DELETE CASCADE,
+            article_id integer NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+            UNIQUE (cluster_id, article_id)
+        )
+    """),
+
+    # Derived results only. The foreign key is what makes the clustering
+    # TRUNCATE cascade to here, which is why the summarise stage must always
+    # follow the cluster stage.
+    ("table: cluster_analysis", """
+        CREATE TABLE IF NOT EXISTS cluster_analysis (
+            id               serial PRIMARY KEY,
+            cluster_id       integer UNIQUE REFERENCES clusters(id) ON DELETE CASCADE,
+            title_summary    text,
+            title_summary_at timestamptz,
+            subject          text,
+            tone             text,
+            tone_score       real,
+            consensus        jsonb,
+            framing          jsonb,
+            figure_digest    jsonb,
+            sources_used     integer,
+            nli_model        text,
+            summary_model    text,
+            sentiment_model  text,
+            analyzed_at      timestamptz DEFAULT now()
+        )
+    """),
+
+    # Cosine because the embeddings are L2-normalised at write time.
+    ("index: articles.embedding (hnsw)", """
+        CREATE INDEX IF NOT EXISTS articles_embedding_idx
+            ON articles USING hnsw (embedding vector_cosine_ops)
+    """),
+    # Postgres does not index foreign keys automatically, and every cluster
+    # read joins through both of these.
+    ("index: cluster_members.cluster_id", """
+        CREATE INDEX IF NOT EXISTS cluster_members_cluster_id_idx
+            ON cluster_members (cluster_id)
+    """),
+    ("index: cluster_members.article_id", """
+        CREATE INDEX IF NOT EXISTS cluster_members_article_id_idx
+            ON cluster_members (article_id)
+    """),
+    # clustering filters the 7-day window on published_utc; the due-check counts
+    # rows by inserted_at_utc
+    ("index: articles.published_utc", """
+        CREATE INDEX IF NOT EXISTS articles_published_utc_idx
+            ON articles (published_utc DESC)
+    """),
+    ("index: articles.inserted_at_utc", """
+        CREATE INDEX IF NOT EXISTS articles_inserted_at_utc_idx
+            ON articles (inserted_at_utc DESC)
+    """),
+]
 
 MIGRATIONS = [
     # two-stage analysis: the request handler writes a status, the worker advances it
@@ -48,6 +155,12 @@ MIGRATIONS = [
     """),
 ]
 
+# Early development left a second HNSW index on the same column under a
+# generated name. Two identical indexes double the write cost of every insert
+# and the memory the index occupies, for no read benefit.
+CLEANUP = [
+    ("drop duplicate embedding index", "DROP INDEX IF EXISTS articles_embedding_idx1"),
+]
 
 # Columns belonging to features that were removed after measurement. Dropping
 # them is irreversible and takes the recorded results with it, so it is opt-in:
@@ -66,9 +179,9 @@ RETIRED = [
 
 def migrate():
     with get_cursor() as cur:
-        for name, statement in MIGRATIONS:
+        for label, statement in BASE_SCHEMA + MIGRATIONS + CLEANUP:
             cur.execute(statement)
-            print(f"  ok  {name}")
+            print(f"  ok  {label}")
 
 
 def drop_retired():
@@ -84,7 +197,7 @@ if __name__ == "__main__":
         print("Dropping columns for removed features (irreversible)...")
         drop_retired()
     else:
-        print("Applying schema additions...")
+        print("Creating and updating schema...")
         migrate()
         print(f"\n{len(RETIRED)} retired columns still present and unwritten: "
               f"{', '.join(RETIRED)}")
