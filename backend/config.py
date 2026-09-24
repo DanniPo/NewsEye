@@ -38,7 +38,8 @@ MAX_CLUSTER_SHARE = 0.25
 # invented a connecting narrative, the subject came out as bare "Nairobi", and
 # framing compared entities across unrelated events.
 CLUSTER_MIN_COHERENCE = 0.50
-NLI_CONFIDENCE_THRESHOLD = 0.75
+# below this zero-shot confidence an article's topic is recorded as FALLBACK_LABEL
+TOPIC_CONFIDENCE_THRESHOLD = 0.75
 SNIPPET_MAX_LENGTH = 150
 # MiniLM truncates at 256 tokens, so more than ~1000 chars is wasted
 EMBED_MAX_CHARS = 1000
@@ -47,8 +48,7 @@ EMBED_MAX_CHARS = 1000
 FETCH_FULL_TEXT = False
 
 # --- active tier (on-demand deep analysis) ---
-# must be a 3-way MNLI model: binary zero-shot models cannot express contradiction
-NLI_MODEL = "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+# scores each sentence that names an entity; three-class, so it can say neutral
 SENTIMENT_MODEL = "cardiffnlp/twitter-roberta-base-sentiment-latest"
 # What actually produces the cluster summaries a reader sees. They are not
 # generated: representative_title() picks the member headline closest to the
@@ -74,9 +74,9 @@ MIN_BODY_CHARS = 250
 FETCH_CONCURRENCY = 3
 FETCH_DELAY_SECONDS = 0.4
 
-# NLI only earns its cost on claims that are already about the same event. Pairs
-# further apart than this cosine distance come back "neutral" and are skipped.
-NLI_MAX_COSINE_DISTANCE = 0.4
+# two claims count as the same fact when their embeddings are at least this close
+# (cosine distance). Drives the coverage table: which outlets carried each fact.
+CLAIM_MATCH_MAX_DISTANCE = 0.4
 
 # analysis_status values on clusters, driving the two-stage summary in the UI
 ANALYSIS_PENDING = "pending"

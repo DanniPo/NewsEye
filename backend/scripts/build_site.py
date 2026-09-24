@@ -509,8 +509,8 @@ def story_tile(cluster):
                       f'fact{"s" if gaps != 1 else ""} not carried by all</span>')
     else:
         badges.append('<span class="badge ok">every fact carried by all</span>')
-    if tiers["comparable"]:
-        badges.append(f'<span class="badge fig">{tiers["comparable"]} figures to compare</span>')
+    if tiers["shared"]:
+        badges.append(f'<span class="badge fig">{tiers["shared"]} figures from several outlets</span>')
     if coherence and coherence < 0.5:
         badges.append('<span class="badge loose">loose grouping</span>')
 

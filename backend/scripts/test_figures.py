@@ -9,7 +9,7 @@ digest_groups: one group across two outlets, or none.
     python -m backend.scripts.test_figures
 """
 from backend.analysis.digest import build_digest, digest_groups
-from backend.analysis.figures import classify_measure, parse_figures
+from backend.analysis.figures import parse_figures
 
 # pairs that must be grouped, and pairs that must not - the second list is the
 # regression guard for the subject/unit matching
@@ -124,7 +124,7 @@ for sentence in PARSE_CASES:
     rendered = ", ".join(
         f"{f['text']}={f['value']:,.4g} [{f['unit'] or 'no unit'}]" for f in figures
     ) or "(none)"
-    print(f"[{classify_measure(sentence):<10}] {rendered}")
+    print(f"  {rendered}")
     print(f"             {sentence[:78]}")
 
 def cross_source_group(claims):
@@ -140,8 +140,7 @@ def cross_source_group(claims):
 print("\n=== GROUPING A MIXED CLUSTER ===")
 for group in digest_groups(build_digest(
         [dict(c, article_id=i + 1) for i, c in enumerate(MIXED_CLAIMS)])):
-    print(f"\n{len(group['sources'])} outlets in '{group['unit']}' "
-          f"(spread {group['spread']:.1f}x):")
+    print(f"\n{len(group['sources'])} outlets in '{group['unit']}':")
     for row in group["values"]:
         print(f"   {row['figure']:>16}  [{row['source']}]")
 

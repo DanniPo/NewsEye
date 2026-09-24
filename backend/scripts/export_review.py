@@ -18,21 +18,19 @@ import json
 import time
 
 from backend.analysis.claims import extract_claims
-from backend.analysis.consensus import BUCKET_SIMILARITY, analyze_cluster_claims
+from backend.analysis.consensus import MATCH_SIMILARITY, analyze_cluster_claims
 from backend.analysis.digest import build_digest
 from backend.analysis.figures import (
-    classify_measure,
     cluster_vocabulary,
     parse_figures,
 )
 from backend.analysis.framing import analyze_framing
 from backend.analysis.runner import load_cluster, save_analysis, set_status
-from backend.analysis.story import score_tone, summarize_titles
+from backend.analysis.story import representative_title
 from backend.analysis.subject import derive_subject
 from backend.config import (
     ANALYSIS_DEEP_READY,
-    NLI_MAX_COSINE_DISTANCE,
-    NLI_MODEL,
+    CLAIM_MATCH_MAX_DISTANCE,
     SENTIMENT_MODEL,
     TITLE_SUMMARY_MODEL,
 )
@@ -57,11 +55,10 @@ def multi_source_clusters(limit):
 
 
 def all_figures(claims):
-    """Every parsed figure with the unit and subject that decided its grouping."""
+    """Every parsed figure with the unit and subject that decided its placement."""
     ubiquitous = cluster_vocabulary(claims)
     rows = []
     for claim in claims:
-        measure = classify_measure(claim["text"])
         for figure in parse_figures(claim["text"]):
             tokens = figure["subject"]["tokens"] - ubiquitous
             rows.append({
@@ -70,10 +67,9 @@ def all_figures(claims):
                 "value": figure["value"],
                 "unit": figure["unit"],
                 "state": figure["state"],
-                "measure": measure,
                 "subject": sorted(tokens),
                 "dropped_as_cluster_vocab": sorted(figure["subject"]["tokens"] & ubiquitous),
-                "compared": bool(figure["unit"]),
+                "typed": bool(figure["unit"]),
                 "claim": claim["text"],
             })
     return rows, sorted(ubiquitous)
@@ -89,13 +85,12 @@ def analyse(cluster_id):
 
     started = time.time()
     titles = [a["title"] for a in articles]
-    title_summary = summarize_titles(titles)
+    title_summary = representative_title(titles)
     bodies = fetch_many([a["url"] for a in articles])
 
-    texts, claims = [], []
+    claims = []
     for article, body in zip(articles, bodies, strict=True):
         text = body or f"{article['title']} {article['snippet'] or ''}"
-        texts.append(text)
         for claim in extract_claims(text):
             claim["source"] = article["source_name"]
             claim["article_id"] = article["id"]
@@ -109,13 +104,10 @@ def analyse(cluster_id):
     framing = analyze_framing(claims)
     digest = build_digest(claims, articles)
     figures, ubiquitous = all_figures(claims)
-    tone, tone_score = score_tone(texts)
     subject = derive_subject(titles)
 
-    result = {"title_summary": title_summary, "tone": tone,
-              "tone_score": tone_score, "consensus": groups,
-              "framing": framing, "figure_digest": digest,
-              "subject": subject}
+    result = {"title_summary": title_summary, "consensus": groups,
+              "framing": framing, "figure_digest": digest, "subject": subject}
     retrieved = sum(1 for b in bodies if b)
     save_analysis(cluster_id, result, retrieved)
     set_status(cluster_id, ANALYSIS_DEEP_READY)
@@ -128,8 +120,6 @@ def analyse(cluster_id):
         "retrieved": retrieved,
         "seconds": round(time.time() - started, 1),
         "title_summary": title_summary,
-        "tone": tone,
-        "tone_score": tone_score,
         "subject": subject,
         "articles": [
             {
@@ -168,9 +158,8 @@ def main():
     bundle = {
         "generated_at": time.strftime("%Y-%m-%d %H:%M"),
         "config": {
-            "nli_max_cosine_distance": NLI_MAX_COSINE_DISTANCE,
-            "nli_min_similarity": round(BUCKET_SIMILARITY, 3),
-            "nli_model": NLI_MODEL,
+            "claim_match_max_distance": CLAIM_MATCH_MAX_DISTANCE,
+            "claim_match_min_similarity": round(MATCH_SIMILARITY, 3),
             "summary_model": TITLE_SUMMARY_MODEL,
             "sentiment_model": SENTIMENT_MODEL,
         },

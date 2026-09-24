@@ -73,13 +73,10 @@ BASE_SCHEMA = [
             title_summary    text,
             title_summary_at timestamptz,
             subject          text,
-            tone             text,
-            tone_score       real,
             consensus        jsonb,
             framing          jsonb,
             figure_digest    jsonb,
             sources_used     integer,
-            nli_model        text,
             summary_model    text,
             sentiment_model  text,
             analyzed_at      timestamptz DEFAULT now()
@@ -166,14 +163,16 @@ CLEANUP = [
 # them is irreversible and takes the recorded results with it, so it is opt-in:
 # the pipeline simply stops writing them, and they sit empty until asked for.
 RETIRED = [
-    # stance: classifier called "Appoints Kenyan Diplomat to Crucial New Role"
-    # critical at 0.796, and disagreed with framing on the same outlet
+    # stance classification - unreliable, and a verdict the reader should make
     "stances", "stance_subject", "stance_model",
-    # figure conflict adjudication: no true positive at 800 or 2,162 articles.
-    # Superseded by figure_digest, which surfaces without ruling.
+    # figure conflict adjudication - replaced by the figure digest
     "figure_conflicts",
-    # abstractive deep summary: distilbart misspelled Kenyan names in 77/149
+    # abstractive summary - replaced by the representative headline
     "summary",
+    # whole-article tone - replaced by per-entity framing
+    "tone", "tone_score",
+    # NLI between claims - its output never reached a reader
+    "nli_model",
 ]
 
 

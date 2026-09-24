@@ -1,8 +1,10 @@
 import torch
 from sentence_transformers import SentenceTransformer
 
+from backend.config import EMBEDDING_MODEL
+
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-model = SentenceTransformer("all-MiniLM-L6-v2", device=DEVICE)
+model = SentenceTransformer(EMBEDDING_MODEL, device=DEVICE)
 
 def generate_embedding(text: str) -> list:
     return model.encode(text, normalize_embeddings=True).tolist()

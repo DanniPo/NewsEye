@@ -57,7 +57,7 @@ def save_previews(rows):
 
 
 def generate_previews(regenerate=False, limit=None):
-    from backend.analysis.story import summarize_titles
+    from backend.analysis.story import representative_title
 
     pending = clusters_needing_preview(regenerate)
     if limit:
@@ -71,7 +71,7 @@ def generate_previews(regenerate=False, limit=None):
     done = []
     for index, row in enumerate(pending, start=1):
         try:
-            summary = summarize_titles(list(row["titles"]))
+            summary = representative_title(row["titles"])
         except Exception as exc:
             print(f"  [{index}/{len(pending)}] cluster {row['id']} failed: "
                   f"{type(exc).__name__}: {exc}")

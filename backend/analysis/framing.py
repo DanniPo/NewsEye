@@ -1,17 +1,13 @@
-"""Entity framing: how differently do two outlets describe the same thing?
+"""Entity framing: how each outlet describes the people and institutions in a story.
 
-Document-level sentiment asks "is this article negative?", which for news is
-mostly noise - a flood reads negative whoever files it, and a summit reads
-positive. Averaging that over a cluster produced scores like 0.999 that say
-nothing about who disagrees with whom.
+Sentiment is scored only on the sentences that name an entity, and averaged per
+(entity, outlet) pair - never per article. A whole article's tone says little
+(a flood reads negative whoever files it); how one outlet writes about a named
+person compared with another outlet is what a reader can learn from.
 
-The sharper question is narrower: when several outlets all write about the same
-entity, do they describe it in the same terms? That gap is framing, and it only
-becomes visible when sentiment is scoped to the sentences that actually name the
-entity, then compared across sources rather than averaged into one number.
-
-So this module never scores an article. It scores an (entity, source) pair, and
-only for entities at least two outlets bothered to mention.
+Each result carries the outlet's average and its sharpest single sentence, so
+the reader sees the wording behind the score. Only entities named by at least
+two outlets are included.
 """
 import re
 from collections import defaultdict
@@ -21,25 +17,37 @@ from backend.config import (
     FRAMING_DIVERGENCE,
     FRAMING_MIN_MENTIONS,
     FRAMING_MIN_SOURCES,
+    SENTIMENT_MODEL,
 )
 
-# the same set stance anchors on: things that can be characterised. A CARDINAL
-# or a DATE has no framing - "90 days" is not described warmly or coldly.
+# entities that can be described warmly or coldly: people, organisations,
+# places, laws, events. A number or a date has no framing.
 FRAMED_ENT_TYPES = {"PERSON", "ORG", "GPE", "NORP", "LAW", "EVENT", "FAC", "PRODUCT"}
 
 _TITLE_PREFIX = re.compile(r"^(?:president|mr|mrs|ms|dr|prof|hon|sen|gov)\.?\s+", re.I)
-# NER hands back "the World Athletics" with the article attached, which then
-# shows up in the report as the entity's name. It is not part of any name.
+# NER returns "the World Athletics" with the article attached
 _LEADING_ARTICLE = re.compile(r"^(?:the|a|an)\s+", re.I)
 _POSSESSIVE = re.compile(r"[\u2019']s\b")
 _NOISE = re.compile(r"[^\w\s-]")
 
 FRAME_WORDS = {"positive": "favourably", "negative": "critically", "neutral": "neutrally"}
 
-# NER handed back "Martin Kimani Lands Top Job" as a PERSON - a headline read as
-# a name. A real entity is short and has no verb in it.
+# NER sometimes returns a headline fragment as a name ("Martin Kimani Lands Top
+# Job"). A real entity is short and has no verb in it.
 ENTITY_MAX_TOKENS = 4
 _verb_cache = {}
+_sentiment = None
+
+
+def get_sentiment():
+    """The three-class sentiment pipeline, loaded once on first use."""
+    global _sentiment
+    if _sentiment is None:
+        import torch
+        from transformers import pipeline
+        device = 0 if torch.cuda.is_available() else -1
+        _sentiment = pipeline("sentiment-analysis", model=SENTIMENT_MODEL, device=device)
+    return _sentiment
 
 
 def looks_like_entity(text):
@@ -133,8 +141,6 @@ def sentence_sentiment(sentences, batch_size=16):
     """Signed sentiment per sentence: P(positive) - P(negative), in -1..1."""
     if not sentences:
         return []
-    from backend.analysis.story import get_sentiment
-
     results = get_sentiment()([s[:512] for s in sentences],
                               batch_size=batch_size, truncation=True, top_k=None)
     scores = []

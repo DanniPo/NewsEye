@@ -3,7 +3,7 @@ from transformers import pipeline
 
 from backend.config import (
     FALLBACK_LABEL,
-    NLI_CONFIDENCE_THRESHOLD,
+    TOPIC_CONFIDENCE_THRESHOLD,
     TOPIC_LABELS,
     ZERO_SHOT_MODEL,
 )
@@ -13,7 +13,7 @@ classifier = pipeline("zero-shot-classification", model=ZERO_SHOT_MODEL, device=
 
 def _pick(result: dict) -> tuple:
     label, score = result["labels"][0], result["scores"][0]
-    if score < NLI_CONFIDENCE_THRESHOLD:
+    if score < TOPIC_CONFIDENCE_THRESHOLD:
         label = FALLBACK_LABEL
     return label, round(score, 3)
 

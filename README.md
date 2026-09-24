@@ -60,14 +60,31 @@ derived results, and discards the text.
 ```
 python -m backend.active --min-sources 3
    claims    spaCy sentence extraction around quantities
-   coverage  set arithmetic over grouped claims — no model, cannot hallucinate
-   figures   parse, type, and group only where unit and subject agree
+   coverage  group claims by meaning, then set arithmetic: who carried each fact
+   figures   read every number, label it, show it with its source and context
    framing   sentiment scoped to sentences naming one entity, per outlet
 ```
 
 `backend/analysis/` holds the analysis modules, `backend/nlp/` the embedding,
 clustering and search, `backend/ingestion/` the feed reading, `backend/db/` the
 schema and connection.
+
+## Models
+
+Four models, each doing one job. Every one is named explicitly in
+`backend/config.py`, so none of them is ever a library default.
+
+| Model | Size | Used in | Role |
+|---|---|---|---|
+| `all-MiniLM-L6-v2` (sentence-transformers) | 92 MB | `nlp/embeddings.py` | Embeds every article for clustering and search; groups claims into facts for the coverage table; picks each story's representative headline; orders figures within a group |
+| `deberta-v3-base-zeroshot-v1.1-all-33` | 380 MB | `nlp/classification.py` | Gives each article a topic label at ingest |
+| `twitter-roberta-base-sentiment-latest` | 1 GB | `analysis/framing.py` | Scores the sentences that name a person or institution, averaged per outlet |
+| spaCy `en_core_web_sm` | 15 MB | `analysis/claims.py` | Splits articles into sentences and tags names, places and quantities; also used to name each story's subject |
+
+HDBSCAN does the clustering, but it is an algorithm rather than a trained model.
+
+No model decides what is true, which outlet is right, or whether two figures
+agree. They group, label and order things; the reader interprets them.
 
 ## Setup
 
@@ -99,7 +116,7 @@ index, and is safe to re-run. Nothing else is needed to get a working schema.
 Connection settings other than the password are in `backend/db/connection.py`;
 feeds, thresholds and model names are in `backend/config.py`.
 
-The ~1.9GB of models are downloaded from HuggingFace on first use and cached in
+The ~1.5GB of models are downloaded from HuggingFace on first use and cached in
 `~/.cache/huggingface` — outside the repository and outside any synced folder.
 No cloud storage is involved.
 
@@ -168,7 +185,5 @@ above — `density_curve.py` (yield scaling), `benchmark_separation.py` and
   earnings report for the same utility can score 0.685 and still be a grab-bag.
 - **Model loading dominates runtime** — about 71% of a passive run is spent
   importing torch to do ~36s of work. A long-lived worker would fix it.
-- **NLI still flags claim pairs at roughly 33% precision.** Those flags are used
-  internally to group claims, never shown to a reader as a contradiction.
 
 Final-year project, Strathmore University.

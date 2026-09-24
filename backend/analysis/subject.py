@@ -1,14 +1,8 @@
-"""Name what a cluster is about, in the words its own headlines used.
+"""Name what a story is about, in the words its own headlines used.
 
-This was originally the first half of the stance module: stance needed a phrase
-to measure positions against. Stance is gone - the classifier called a story
-headlined "Appoints Kenyan Diplomat to Crucial New Role" critical at 0.796, and
-the same DeBERTa checkpoint later labelled a sentence as contradicting an
-identical copy of itself at 0.853. Naming the subject survived the cut because
-it is extractive and independently useful: it labels the figure digest, and it
-tells a reader which story they are looking at.
-
-No model runs here beyond spaCy's parser.
+Shown on the story page so the reader knows which story they are looking at.
+Extractive: the phrase is taken from the headlines, never generated, and the
+only model involved is spaCy's parser.
 """
 import re
 from collections import Counter
