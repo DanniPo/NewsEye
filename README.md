@@ -1,5 +1,4 @@
 # Newseye
-
 A media-literacy tool for Kenyan news. It groups articles from 12 Kenyan outlets
 that are reporting the same event, then shows a reader what each outlet included,
 what it left out, how it described the people involved, and which numbers it
