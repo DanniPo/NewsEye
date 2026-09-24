@@ -55,8 +55,8 @@ TIME_UNITS = {
     "year": "years", "years": "years",
 }
 
-# What kind of casualty count a figure is. Shown to the reader, and used so that
-# a death toll is never placed beside an injury count as if they were one number.
+# What kind of casualty count a figure is, so that a death toll is never placed
+# beside an injury count as if they were one number.
 CASUALTY_STATES = {
     "killed": "dead", "kill": "dead", "dead": "dead", "death": "dead",
     "deaths": "dead", "died": "dead", "die": "dead", "toll": "dead",
@@ -335,7 +335,6 @@ def parse_figures(sentence):
         figures.append({
             "value": value,
             "text": match.group(0).strip(),
-            "percent": bool(match.group("percent")),
             "unit": unit,
             "state": state,
             "currency": currency_code(match),
@@ -372,8 +371,8 @@ def is_cumulative(sentence):
 def claim_scope(claim):
     """The places a claim is about, from its named entities.
 
-    Shown to the reader beside the figure, so "558 missing on the Chinese side"
-    and "826 missing in Nepal" are visibly about different places.
+    Keeps casualty figures about different places apart, so "558 missing on the
+    Chinese side" and "826 missing in Nepal" are never shown as one count.
     """
     entities = claim.get("entities") or []
     return frozenset(

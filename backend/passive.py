@@ -1,21 +1,3 @@
-"""The passive tier as one command: ingest, cluster, summarise.
-
-This is what runs unattended. It is deliberately a single entry point rather
-than three scheduled tasks, because the three stages are ordered and must not
-overlap: clustering truncates and rebuilds the cluster tables, so an ingest
-writing articles underneath it would be clustered inconsistently, and summaries
-must follow the clustering that created the clusters they describe.
-
-    python -m backend.passive                 # ingest, then cluster if due
-    python -m backend.passive --cluster        # force the clustering stage
-    python -m backend.passive --ingest-only    # just pull the feeds
-
-Clustering is the expensive stage and is O(n^2) in the window, so by default it
-runs only when the corpus has moved enough to be worth it, or when the last run
-is older than CLUSTER_MAX_AGE_HOURS. Ingestion is cheap and always runs.
-
-Exit code is non-zero if any stage failed, so a scheduler can alert on it.
-"""
 import argparse
 import contextlib
 import io

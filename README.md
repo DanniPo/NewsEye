@@ -147,10 +147,20 @@ python -m backend.scripts.build_site
 # open site/index.html
 ```
 
-A static dashboard plus one page per story. **Cluster IDs are reassigned on
-every clustering run**, so `story-N.html` links go stale once the passive tier
-next runs; regenerate both commands together. Stable story IDs are the main
-outstanding piece of work.
+A static dashboard, one page per story, and a search page. **Cluster IDs are
+reassigned on every clustering run**, so `story-N.html` links go stale once the
+passive tier next runs; regenerate both commands together. Stable story IDs are
+the main outstanding piece of work.
+
+`search.html` searches every article in the database, not only the stories on
+the dashboard, by meaning rather than exact words. Articles that share a story
+are shown together, with a link to its comparison page when it has one. It
+needs no server: the reader's query is embedded in the browser by the same
+MiniLM model the articles were embedded with (Transformers.js, downloaded from a
+CDN on the first search), and compared with every article's stored embedding,
+shipped in `site/search-index.js` (~2.5 MB). Nothing typed leaves the browser.
+Offline, it falls back to matching words. Building the index needs the
+database.
 
 ## Tests
 

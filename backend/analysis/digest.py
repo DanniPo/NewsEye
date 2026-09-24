@@ -2,15 +2,16 @@
 
 The digest does not judge figures. It lays out what each outlet reported so the
 reader can see and interpret it. Each figure carries its sentence, the sentence
-either side, the outlet, a link to the original, and labels from
-analysis.figures: unit, casualty state, currency, scope and whether it is a
-running total.
+either side, the outlet, a link to the original, and the labels shown beside
+it: who it is credited to, its currency, whether it is a running total, and any
+breakdown. Casualty state and place are read too, but only to decide which
+figures may sit side by side. A number whose unit cannot be read is dropped,
+since there is nothing to show it beside or to say about it.
 
 Figures are tiered by how they can be read:
 
     shared    at least one other outlet published a figure of the same kind
     single    only one outlet published a figure of this kind
-    untyped   a number whose kind could not be read
 
 digest_groups() then places shared figures that appear to count the same thing
 side by side. Placing them together is a layout decision, not a claim that they
@@ -26,7 +27,7 @@ from backend.analysis.figures import (
 )
 
 # entity types whose numbers are never reported quantities: dates, clock times,
-# rankings. Dropping them keeps the untyped tier short enough to read.
+# rankings. Without this, "16 September" reads as a count of 16 septembers.
 NOISE_ENT_TYPES = {"DATE", "TIME", "ORDINAL"}
 
 # How far apart the smallest and largest figure in a group may be before they are
@@ -66,7 +67,7 @@ AUTHORITY = re.compile(
     r"union|commission|authority|regulator|census|survey|poll|audit|report|"
     r"Red Cross|UN|WHO|UNICEF|World Bank|IMF|rights group|watchdog)\b", re.I)
 
-TIER_ORDER = {"shared": 0, "single": 1, "untyped": 2}
+TIER_ORDER = {"shared": 0, "single": 1}
 
 
 def cited_authority(sentence):
@@ -101,8 +102,8 @@ def is_noise(figure_text, claim):
 def build_digest(claims, articles=None):
     """Every reported figure in the story, labelled, attributed and tiered.
 
-    articles maps each claim back to the headline and URL it came from, so every
-    figure on the page links to the original article.
+    articles maps each claim back to the URL it came from, so every figure on
+    the page links to the original article.
     """
     origins = {a["id"]: a for a in (articles or [])}
     ubiquitous = cluster_vocabulary(claims)
@@ -110,10 +111,9 @@ def build_digest(claims, articles=None):
     for claim in claims:
         scope = claim_scope(claim)
         for figure in parse_figures(claim["text"]):
-            if is_noise(figure["text"], claim):
+            if not figure["unit"] or is_noise(figure["text"], claim):
                 continue
             origin = origins.get(claim.get("article_id")) or {}
-            published = claim.get("published_utc")
             rows.append({
                 "value": figure["value"],
                 "figure": figure["text"],
@@ -138,10 +138,6 @@ def build_digest(claims, articles=None):
                 "upper": sorted(figure["subject"]["upper"]),
                 "sentence": claim["text"],
                 "context": claim.get("context") or claim["text"],
-                "article_id": claim.get("article_id"),
-                "published": (published.isoformat()
-                              if hasattr(published, "isoformat") else published),
-                "article_title": origin.get("title"),
                 "url": origin.get("url"),
             })
 
@@ -175,15 +171,13 @@ def build_digest(claims, articles=None):
         peers = [
             other for other in rows
             if other is not row
-            and other["unit"] and other["unit"] == row["unit"]
+            and other["unit"] == row["unit"]
             and other["source"] != row["source"]
         ]
         row["peers"] = len(peers)
-        row["tier"] = ("shared" if row["unit"] and peers
-                       else "single" if row["unit"]
-                       else "untyped")
+        row["tier"] = "shared" if peers else "single"
 
-    rows.sort(key=lambda r: (TIER_ORDER[r["tier"]], -r["peers"], r["unit"] or "zz", r["value"]))
+    rows.sort(key=lambda r: (TIER_ORDER[r["tier"]], -r["peers"], r["unit"], r["value"]))
     return rows
 
 
@@ -196,8 +190,6 @@ def rank_by_similarity(members):
     where its own context shows why.
     """
     if len(members) < 2:
-        for row in members:
-            row["similarity"] = 1.0
         return members
 
     import numpy as np
@@ -210,9 +202,9 @@ def rank_by_similarity(members):
     centroid = vectors.mean(axis=0)
     norm = np.linalg.norm(centroid)
     scores = vectors @ (centroid / norm) if norm else np.ones(len(members))
-    for row, score in zip(members, scores, strict=True):
-        row["similarity"] = round(float(score), 3)
-    return sorted(members, key=lambda r: -r["similarity"])
+    ranked = sorted(zip(scores, members, strict=True),
+                    key=lambda pair: -round(float(pair[0]), 3))
+    return [row for _, row in ranked]
 
 
 def _distinctive(row):

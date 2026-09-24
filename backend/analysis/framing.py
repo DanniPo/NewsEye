@@ -14,7 +14,6 @@ from collections import defaultdict
 
 from backend.config import (
     CORPUS_UNIVERSAL_TERMS,
-    FRAMING_DIVERGENCE,
     FRAMING_MIN_MENTIONS,
     FRAMING_MIN_SOURCES,
     SENTIMENT_MODEL,
@@ -29,8 +28,6 @@ _TITLE_PREFIX = re.compile(r"^(?:president|mr|mrs|ms|dr|prof|hon|sen|gov)\.?\s+"
 _LEADING_ARTICLE = re.compile(r"^(?:the|a|an)\s+", re.I)
 _POSSESSIVE = re.compile(r"[\u2019']s\b")
 _NOISE = re.compile(r"[^\w\s-]")
-
-FRAME_WORDS = {"positive": "favourably", "negative": "critically", "neutral": "neutrally"}
 
 # NER sometimes returns a headline fragment as a name ("Martin Kimani Lands Top
 # Job"). A real entity is short and has no verb in it.
@@ -157,9 +154,8 @@ def _frame_label(score):
 
 
 def analyze_framing(claims, min_sources=FRAMING_MIN_SOURCES,
-                    min_mentions=FRAMING_MIN_MENTIONS,
-                    divergence=FRAMING_DIVERGENCE):
-    """Per entity, how each source describes it, and where they part company."""
+                    min_mentions=FRAMING_MIN_MENTIONS):
+    """Per entity, how each source describes it, widest gap between outlets first."""
     mentions = collect_mentions(claims)
     comparable = {
         entity: rows for entity, rows in mentions.items()
@@ -194,11 +190,10 @@ def analyze_framing(claims, min_sources=FRAMING_MIN_SOURCES,
                 "frame": _frame_label(mean),
                 "mentions": len(rows),
                 "example": sharpest[1],
-                # the quoted sentence's own score. Showing the average beside a
+                # the quoted sentence's own label. Showing the average beside a
                 # single quote implied the label described that quote, so one
                 # sentence appeared "neutral" under one entity and "positive"
                 # under another - it was the averages differing, not the sentence.
-                "example_score": round(sharpest[0], 3),
                 "example_frame": _frame_label(sharpest[0]),
             })
 
@@ -206,30 +201,11 @@ def analyze_framing(claims, min_sources=FRAMING_MIN_SOURCES,
             continue
         per_source.sort(key=lambda s: s["score"])
         spread = per_source[-1]["score"] - per_source[0]["score"]
-        frames = {s["frame"] for s in per_source}
         records.append({
             "entity": entity,
             "sources": per_source,
             "spread": round(spread, 3),
-            # a real split needs both a wide gap and disagreement on direction,
-            # so two outlets that are merely negative to different degrees
-            # are not reported as framing the story differently
-            "diverges": spread >= divergence and len(frames - {"neutral"}) > 0
-                        and len(frames) > 1,
         })
 
     records.sort(key=lambda r: (-r["spread"], r["entity"]))
     return records
-
-
-def describe_framing(record):
-    """The finding in words: '[People Daily] frames Ruto's directive critically'."""
-    lines = []
-    for entry in record["sources"]:
-        plural = "s" if entry["mentions"] != 1 else ""
-        lines.append(
-            f"[{entry['source']}] frames {record['entity']} "
-            f"{FRAME_WORDS[entry['frame']]} "
-            f"({entry['score']:+.2f} over {entry['mentions']} mention{plural})"
-        )
-    return lines

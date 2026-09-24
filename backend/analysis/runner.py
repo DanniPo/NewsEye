@@ -1,10 +1,12 @@
 """Active tier: on-demand deep analysis of one cluster, cached in the database.
 
-Two stages share one cluster. The preview picks a representative headline and
-lands in about a second; the deep pass fetches article text transiently, derives
-coverage, figures and framing, stores only those derived results, and discards
-the text. `clusters.analysis_status` says which stage a cluster has reached, so a
-caller can show the preview while the deep pass is still running.
+The deep pass first saves a representative headline, then fetches article text
+transiently, derives coverage, figures and framing, stores only those derived
+results, and discards the text. `clusters.analysis_status` says which stage a
+cluster has reached, so a caller can show the headline while the rest is still
+running.
+
+    python -m backend.analysis.runner <cluster_id> [--refresh]
 
 Every output is something for a reader to interpret - which outlet carried which
 fact, which numbers each gave and in what words, how each described the people
@@ -16,8 +18,8 @@ import time
 
 from backend.analysis.claims import extract_claims
 from backend.analysis.consensus import analyze_cluster_claims
-from backend.analysis.digest import build_digest, digest_groups, summarise
-from backend.analysis.framing import analyze_framing, describe_framing
+from backend.analysis.digest import build_digest, summarise
+from backend.analysis.framing import analyze_framing
 from backend.analysis.story import representative_title
 from backend.analysis.subject import derive_subject
 from backend.config import (
@@ -111,24 +113,6 @@ def save_analysis(cluster_id, result, sources_used):
               json.dumps(result.get("figure_digest") or [], default=str),
               sources_used, TITLE_SUMMARY_MODEL, SENTIMENT_MODEL))
 
-def preview_cluster(cluster_id, refresh=False):
-    """Fast path: titles only, no fetching. Meant to return inside a web request."""
-    if not refresh:
-        cached = cached_analysis(cluster_id)
-        if cached and cached.get("title_summary"):
-            return cached["title_summary"]
-
-    started = time.time()
-    cluster, articles = load_cluster(cluster_id)
-    if not cluster:
-        raise ClusterNotFound(f"Cluster {cluster_id} not found")
-
-    title_summary = representative_title([a["title"] for a in articles])
-    save_preview(cluster_id, title_summary)
-    mark_preview_ready(cluster_id)
-    print(f"Preview for cluster {cluster_id} in {time.time() - started:.1f}s")
-    return title_summary
-
 def analyze_cluster(cluster_id, refresh=False):
     if not refresh:
         cached = cached_analysis(cluster_id)
@@ -202,15 +186,13 @@ def _run_deep_analysis(cluster_id):
     digest = build_digest(claims, articles)
     timings["figures"] = time.time() - mark
     tiers = summarise(digest)
-    print(f"  figures: {tiers['shared']} shared, {tiers['single']} single-source, "
-          f"{tiers['untyped']} untyped")
+    print(f"  figures: {tiers['shared']} shared, {tiers['single']} single-source")
 
     print("Scoring how each outlet describes shared entities...")
     mark = time.time()
     framing = analyze_framing(claims)
     timings["framing"] = time.time() - mark
-    split = sum(1 for f in framing if f["diverges"])
-    print(f"  {len(framing)} entities named by 2+ sources, {split} framed differently")
+    print(f"  {len(framing)} entities named by 2+ sources")
 
     subject = derive_subject([article["title"] for article in articles])
     print(f"Subject: {subject}")
@@ -227,90 +209,10 @@ def _run_deep_analysis(cluster_id):
 
     return result
 
-def _as_list(value):
-    if isinstance(value, str):
-        return json.loads(value)
-    return value or []
-
-def print_report(result):
-    if result.get("title_summary"):
-        print("\n--- PREVIEW (titles only) ---")
-        print(result["title_summary"])
-
-    if result.get("subject"):
-        print(f"Subject: {result['subject']}")
-
-    groups = _as_list(result.get("consensus"))
-    print(f"\n--- COVERAGE ({len(groups)} facts) ---")
-    for group in groups:
-        print(f"\nFact [{group['anchor'].get('source', '?')}]: {group['anchor']['text'][:150]}")
-        reported = group.get("reported_by") or []
-        omitted = group.get("omitted_by") or []
-        unread = group.get("not_checked") or []
-        print(f"  reported by {len(reported)}: {', '.join(reported) or '-'}")
-        if omitted:
-            print(f"  NOT reported by {len(omitted)}: {', '.join(omitted)}")
-        if unread:
-            print(f"  could not read: {', '.join(unread)}")
-        for member in group["members"]:
-            print(f"   - d={member.get('distance', '?')} "
-                  f"[{member['claim'].get('source','?')}] {member['claim']['text'][:100]}")
-
-    framing = _as_list(result.get("framing"))
-    split = [f for f in framing if f.get("diverges")]
-    print(f"\n--- FRAMING ({len(framing)} shared entities, {len(split)} split) ---")
-    if not framing:
-        print("No entity was named by two or more sources.")
-    for record in framing[:6]:
-        marker = "  << framed differently" if record.get("diverges") else ""
-        print(f"\n{record['entity']}  (spread {record['spread']:+.2f}){marker}")
-        for line in describe_framing(record):
-            print(f"  {line}")
-
-    digest = _as_list(result.get("figure_digest"))
-    groups = digest_groups(digest)
-    tiers = summarise(digest)
-    print(f"\n--- FIGURES ({tiers['shared']} shared, "
-          f"{tiers['single']} single-source, {tiers['untyped']} untyped) ---")
-
-    if not groups:
-        print("No two outlets published the same kind of quantity.")
-    for group in groups:
-        print(f"\n{len(group['sources'])} outlets gave a figure in '{group['unit']}':")
-        for row in group["values"]:
-            marks = []
-            if row["credited_to"]:
-                marks.append(f"credits {row['credited_to']}")
-            if row["cumulative"]:
-                marks.append("running total")
-            if row["scope"]:
-                marks.append("re: " + ", ".join(row["scope"][:2]))
-            note = ("  (" + "; ".join(marks) + ")") if marks else ""
-            stamp = (row.get("published") or "")[:10]
-            sim = row.get("similarity")
-            rank = f"sim {sim:.2f}  " if sim is not None else ""
-            print(f"   {rank}{row['figure']:>12}  [{row['source']}]"
-                  f"{'  ' + stamp if stamp else ''}{note}")
-            if row.get("article_title"):
-                print(f"       from: {row['article_title'][:76]}")
-            # the surrounding sentences, so the reader sees what the number is
-            # attached to - "of those, 300 were minors" reads as a subset
-            context = row.get("context") or row["sentence"]
-            print(f"       {context[:300]}")
-            if row.get("url"):
-                print(f"       {row['url']}")
-
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        raise SystemExit(
-            "usage: python -m backend.analysis.runner <cluster_id> [--refresh] [--preview]"
-        )
-    cluster = int(sys.argv[1])
-    refresh = "--refresh" in sys.argv
+        raise SystemExit("usage: python -m backend.analysis.runner <cluster_id> [--refresh]")
     try:
-        if "--preview" in sys.argv:
-            print(preview_cluster(cluster, refresh=refresh))
-        else:
-            print_report(analyze_cluster(cluster, refresh=refresh))
+        analyze_cluster(int(sys.argv[1]), refresh="--refresh" in sys.argv)
     except ClusterNotFound as exc:
         raise SystemExit(str(exc)) from exc

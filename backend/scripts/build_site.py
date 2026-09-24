@@ -19,11 +19,20 @@ figure, because across 151 story groups it found none between two outlets.
 
     python -m backend.scripts.export_review --top 14
     python -m backend.scripts.build_site
+
+search.html searches every article in the database, not only the stories shown
+here. The reader's query is embedded in the browser by the same MiniLM model,
+fetched from a CDN on first use, and compared with each article's stored
+embedding, shipped in search-index.js. Building the index needs the database;
+without one the previous index is left in place.
 """
 import argparse
+import base64
 import html
 import json
 import os
+import re
+from collections import Counter
 
 from backend.analysis.digest import digest_groups, summarise
 
@@ -214,6 +223,22 @@ border-radius:4px;padding:2px 5px}
 .fctx{font-size:13px;color:var(--muted);margin:0;line-height:1.5}
 .fctx a{color:var(--accent);font-weight:700;white-space:nowrap}
 .empty{font-size:13.5px;color:var(--muted);font-style:italic}
+
+/* ---- search page ---- */
+.bigsearch{display:flex;align-items:center;gap:9px;border:1px solid var(--rule);
+background:var(--bg);border-radius:10px;padding:6px 6px 6px 13px;margin:16px 0 8px}
+.bigsearch:focus-within{border-color:var(--accent)}
+.bigsearch svg{width:16px;height:16px;color:var(--faint);flex:none}
+.bigsearch input{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);
+font:inherit;font-size:16px;outline:none;padding:6px 0}
+.bigsearch button{border:0;border-radius:7px;background:var(--accent);color:#06231E;
+font:inherit;font-size:14px;font-weight:700;padding:8px 16px;cursor:pointer}
+.hit{padding:15px 0;border-top:1px solid var(--rule)}
+.hit h3{font-family:var(--serif);font-size:17px;font-weight:600;line-height:1.3;margin:8px 0 6px}
+.hit h3 a:hover{text-decoration:underline;text-decoration-color:var(--accent)}
+.hit .heads li{padding:7px 0}
+.snip{font-size:13.5px;color:var(--muted);margin:0 0 6px}
+.hitlink{display:inline-block;margin-top:8px;font-size:13px;font-weight:700;color:var(--accent)}
 footer.end{margin-top:30px;padding-top:14px;border-top:1px solid var(--rule);
 font-size:12.5px;color:var(--faint);line-height:1.55}
 
@@ -223,6 +248,7 @@ font-size:12.5px;color:var(--faint);line-height:1.55}
 .rail{position:static;height:auto;flex-direction:row;align-items:center;gap:12px;
 overflow-x:auto;padding:10px 14px}
 .rail nav{flex-direction:row;gap:4px}
+.rail nav a{white-space:nowrap}
 .rail .who{display:none}
 .content{padding:16px 16px 56px}
 .topbar{padding:11px 16px}.stamp{display:none}
@@ -254,6 +280,7 @@ ICON = {
 
 NAV = (("index.html", "grid", "Dashboard"),
        ("index.html#stories", "layers", "Stories"),
+       ("search.html", "search", "Search"),
        ("index.html#outlets", "globe", "Outlets"),
        ("index.html#gaps", "gap", "Coverage gaps"),
        ("index.html#figures", "hash", "Figures"),
@@ -446,19 +473,28 @@ def rail(active):
         '</aside>')
 
 
-def shell(title, active, body, generated, searchable=False):
-    hint = "Filter stories" if searchable else "Search is on the dashboard"
-    attrs = ' id="q" autocomplete="off"' if searchable else " disabled"
+def shell(title, active, body, generated, search="link", scripts=""):
+    """The page frame. search is how the top bar's box behaves: "filter" narrows
+    the dashboard's stories as you type, "link" sends the query to the search
+    page, and None leaves the box out (the search page has its own)."""
+    box = ""
+    if search:
+        hint = ("Filter stories, or press Enter to search every article"
+                if search == "filter" else "Search every article")
+        ident = ' id="q"' if search == "filter" else ""
+        box = (f'<form class="search" action="search.html" role="search">{ICON["search"]}'
+               f'<input type="search" name="q" placeholder="{e(hint)}" '
+               f'aria-label="{e(hint)}" autocomplete="off"{ident}></form>')
     return (
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f'<title>{e(title)}</title>\n{FONTS}\n<style>{CSS}</style>\n</head>\n<body>\n'
         f'<div class="app">{rail(active)}<div class="main">'
-        f'<div class="topbar"><label class="search">{ICON["search"]}'
-        f'<input type="search" placeholder="{e(hint)}"{attrs}></label>'
+        f'<div class="topbar">{box}'
         f'<span class="stamp">Run of {e(generated)}</span></div>'
         f'<div class="content">{body}</div></div></div>\n'
-        + (SEARCH_JS if searchable else "")
+        + (SEARCH_JS if search == "filter" else "")
+        + scripts
         + "\n</body>\n</html>\n"
     )
 
@@ -470,6 +506,7 @@ SEARCH_JS = """<script>
   var q=document.getElementById('q'); if(!q) return;
   var tiles=[].slice.call(document.querySelectorAll('.tile'));
   var count=document.getElementById('shown');
+  var none=document.getElementById('nores');
   q.addEventListener('input',function(){
     var t=q.value.trim().toLowerCase(), n=0;
     tiles.forEach(function(el){
@@ -477,6 +514,7 @@ SEARCH_JS = """<script>
       el.style.display=hit?'':'none'; if(hit)n++;
     });
     if(count) count.textContent=n+(n===1?' story':' stories');
+    if(none) none.style.display=n?'none':'';
   });
 })();
 </script>"""
@@ -575,7 +613,8 @@ def dashboard(clusters, generated, stats):
         f'<span class="hint"><span id="shown">{len(clusters)} stories</span>'
         ' &middot; most outlets first</span></div>'
         f'<div class="grid">{tiles}</div>'
-        '<div class="empty-grid" id="nores" style="display:none">No story matches that.</div>'
+        '<div class="empty-grid" id="nores" style="display:none">No story on this page '
+        'matches that. Press Enter to search every article.</div>'
         '</div><div>'
 
         f'<div class="panel" id="outlets"><h4>Most present outlets</h4>'
@@ -603,7 +642,7 @@ def dashboard(clusters, generated, stats):
         '</div></div></div>'
     )
     return shell("Newseye - Kenyan media coverage", "Dashboard", body, generated,
-                 searchable=True)
+                 search="filter")
 
 
 def story_page(cluster, generated):
@@ -642,6 +681,284 @@ def story_page(cluster, generated):
           'or tell you who to trust.</footer></div>'
     )
     return shell(cluster.get("title_summary") or "Story", "Stories", body, generated)
+
+
+# Five of the feeds put HTML in their summaries, and ingestion cuts summaries at
+# 150 characters, so a tag can arrive with no closing ">".
+MARKUP = re.compile(r"<[^>]*(?:>|$)")
+# WordPress ends every summary with "The post <a ...>Title</a> appeared first on"
+FEED_FOOTER = re.compile(r"<p>The post <a.*", re.S)
+
+
+def plain(text):
+    """A feed summary as readable text."""
+    return html.unescape(MARKUP.sub(" ", FEED_FOOTER.sub("", text or "")))
+
+
+def search_index(clusters):
+    """Every article in the database, for the search page. None without a database.
+
+    The vectors are the stored MiniLM embeddings, the ones clustering used, cut to
+    int8 with one scale per article: a quarter of the size, and no search score
+    moves by more than 0.002. Articles
+    that share a coherent cluster are marked as one story, so the page can show
+    the story rather than each outlet's copy of it; a loose cluster is not one
+    story, so its articles stand alone.
+    """
+    import numpy as np
+
+    try:
+        from backend.config import CLUSTER_MIN_COHERENCE
+        from backend.db.connection import get_cursor
+        with get_cursor() as cur:
+            cur.execute("""
+                SELECT a.id, a.title, a.source_name, a.published_utc, a.url,
+                       a.category, a.snippet, a.embedding, c.id AS story
+                FROM articles a
+                LEFT JOIN cluster_members cm ON cm.article_id = a.id
+                LEFT JOIN clusters c ON c.id = cm.cluster_id AND c.coherence >= %s
+                WHERE a.embedding IS NOT NULL
+                ORDER BY a.published_utc DESC NULLS LAST, a.id
+            """, (CLUSTER_MIN_COHERENCE,))
+            rows = cur.fetchall()
+            cur.execute("""
+                SELECT c.id, c.topic_label, ca.title_summary
+                FROM clusters c
+                LEFT JOIN cluster_analysis ca ON ca.cluster_id = c.id
+                WHERE c.coherence >= %s
+            """, (CLUSTER_MIN_COHERENCE,))
+            story_rows = {r["id"]: r for r in cur.fetchall()}
+    except Exception as exc:
+        print(f"  (search index unavailable: {type(exc).__name__})")
+        return None
+
+    # link by URL rather than cluster id: ids are reassigned on every clustering
+    # run, and the story pages come from an export that may predate the last one
+    pages = {a["url"]: f"story-{c['cluster_id']}.html"
+             for c in clusters for a in c["articles"]}
+
+    articles, vectors, stories, story_of, seen = [], [], [], {}, set()
+    for row in rows:
+        # a few URLs were ingested twice; a reader should see each article once
+        if row["url"] in seen:
+            continue
+        seen.add(row["url"])
+        story = -1
+        if row["story"] is not None:
+            if row["story"] not in story_of:
+                story_of[row["story"]] = len(stories)
+                meta = story_rows[row["story"]]
+                stories.append([meta["title_summary"] or row["title"],
+                                meta["topic_label"] or "General"])
+            story = story_of[row["story"]]
+        published = row["published_utc"]
+        articles.append([
+            row["title"],
+            # "| Daily Nation" is a malformed name from an earlier feed config
+            (row["source_name"] or "").strip(" |"),
+            published.date().isoformat() if published else "",
+            row["url"],
+            row["category"] or "General",
+            trim(plain(row["snippet"]), 140),
+            story,
+            pages.get(row["url"], ""),
+        ])
+        value = row["embedding"]
+        vectors.append(value.strip("[]").split(",") if isinstance(value, str) else value)
+
+    # a summary several articles share describes the feed, not the article: The
+    # Kenya Times sends its site tagline as every summary
+    repeats = Counter(a[5] for a in articles if a[5])
+    for article in articles:
+        if repeats[article[5]] >= 3:
+            article[5] = ""
+
+    matrix = np.asarray(vectors, dtype=np.float32)
+    scales = np.abs(matrix).max(axis=1) / 127
+    codes = np.round(matrix / scales[:, None]).astype(np.int8)
+    dates = sorted(a[2] for a in articles if a[2])
+    return {
+        "count": len(articles),
+        "first": dates[0] if dates else "",
+        "last": dates[-1] if dates else "",
+        "dim": matrix.shape[1],
+        "articles": articles,
+        "stories": stories,
+        "codes": base64.b64encode(codes.tobytes()).decode("ascii"),
+        "scales": base64.b64encode(scales.astype("<f4").tobytes()).decode("ascii"),
+    }
+
+
+# Runs in the reader's browser. The query is embedded by the same MiniLM model
+# that embedded the articles, so a query and an article are compared exactly as
+# backend/nlp/search.py compares them - and nothing typed leaves the machine.
+SEARCH_PAGE_JS = r"""<script src="search-index.js"></script>
+<script type="module">
+const LIBRARY = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.0";
+const MODEL = "Xenova/all-MiniLM-L6-v2";
+// search.py's cut-off: cosine distance 0.75, so similarity 0.25
+const MIN_SIMILARITY = 0.25;
+// offline fallback: at least half the query's words must appear
+const MIN_WORD_SHARE = 0.5;
+const CANDIDATES = 120, SHOWN = 20, MEMBERS_SHOWN = 6;
+const [TITLE, SOURCE, DATE, URL_, TOPIC, SNIPPET, STORY, PAGE] = [0, 1, 2, 3, 4, 5, 6, 7];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const form = document.getElementById("sform");
+const input = document.getElementById("sq");
+const status = document.getElementById("sstatus");
+const out = document.getElementById("sresults");
+const INDEX = window.NEWSEYE_INDEX;
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
+const day = d => d ? `${+d.slice(8, 10)} ${MONTHS[+d.slice(5, 7) - 1]}` : "";
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const buffer = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer;
+const compare = page => page
+  ? `<a class="hitlink" href="${esc(page)}">Compare what each outlet reported &rarr;</a>` : "";
+
+if (!INDEX) {
+  status.textContent = "Search is not available in this build: the site was generated " +
+                       "without the article database.";
+  input.disabled = true;
+} else {
+  const articles = INDEX.articles;
+  const codes = new Int8Array(buffer(INDEX.codes));
+  const scales = new Float32Array(buffer(INDEX.scales));
+  const members = INDEX.stories.map(() => []);
+  articles.forEach((a, i) => { if (a[STORY] >= 0) members[a[STORY]].push(i); });
+  const idle = `${INDEX.count.toLocaleString("en")} articles, ${day(INDEX.first)} to ` +
+               `${day(INDEX.last)} ${INDEX.last.slice(0, 4)}. Matches meaning, not ` +
+               `just words.`;
+  status.textContent = idle;
+
+  // start downloading the model at once, so it is usually ready by the first search
+  let extractor = null;
+  const ready = import(LIBRARY)
+    .then(({ pipeline }) => pipeline("feature-extraction", MODEL, { dtype: "q8" }))
+    .then(model => { extractor = model; });
+  ready.catch(() => {});
+
+  const semanticScores = query => {
+    const scores = new Float32Array(articles.length);
+    for (let i = 0, k = 0; i < articles.length; i++) {
+      let dot = 0;
+      for (let j = 0; j < INDEX.dim; j++, k++) dot += query[j] * codes[k];
+      scores[i] = dot * scales[i];
+    }
+    return scores;
+  };
+
+  const wordScores = text => {
+    const words = text.toLowerCase().match(/[a-z0-9']{3,}/g) || [];
+    return Float32Array.from(articles, a => {
+      const hay = `${a[TITLE]} ${a[SNIPPET]}`.toLowerCase();
+      return words.length ? words.filter(w => hay.includes(w)).length / words.length : 0;
+    });
+  };
+
+  // best match first; an article in a story brings the story, once
+  const rank = (scores, floor) => {
+    const hits = [];
+    for (let i = 0; i < scores.length; i++) if (scores[i] >= floor) hits.push(i);
+    hits.sort((a, b) => scores[b] - scores[a]);
+    const seen = new Map();
+    for (const i of hits.slice(0, CANDIDATES)) {
+      const key = articles[i][STORY] >= 0 ? `s${articles[i][STORY]}` : `a${i}`;
+      if (!seen.has(key)) seen.set(key, i);
+    }
+    return [...seen.values()].slice(0, SHOWN);
+  };
+
+  const storyCard = (story, scores) => {
+    const list = members[story].slice().sort((a, b) => scores[b] - scores[a]);
+    const outlets = new Set(list.map(i => articles[i][SOURCE]));
+    const dates = list.map(i => articles[i][DATE]).filter(Boolean).sort();
+    const span = dates.length && day(dates[0]) !== day(dates.at(-1))
+      ? `${day(dates[0])} &ndash; ${day(dates.at(-1))}` : day(dates[0]);
+    const [title, topic] = INDEX.stories[story];
+    const rows = list.slice(0, MEMBERS_SHOWN).map(i => {
+      const a = articles[i];
+      return `<li><span class="hsrc">${esc(a[SOURCE])}</span>` +
+             `<a href="${esc(a[URL_])}" target="_blank" rel="noopener noreferrer">` +
+             `${esc(a[TITLE])}</a></li>`;
+    }).join("");
+    const more = list.length > MEMBERS_SHOWN
+      ? `<p class="snip">and ${plural(list.length - MEMBERS_SHOWN, "more article")}</p>` : "";
+    return `<article class="hit"><div class="chips"><span class="chip">${esc(topic)}</span>` +
+           `<span class="chip">${plural(outlets.size, "outlet")}</span>` +
+           (span ? `<span class="chip">${span}</span>` : "") + `</div>` +
+           `<h3>${esc(title)}</h3><ul class="heads">${rows}</ul>${more}` +
+           `${compare(list.map(i => articles[i][PAGE]).find(Boolean))}</article>`;
+  };
+
+  const articleCard = i => {
+    const a = articles[i];
+    return `<article class="hit"><div class="chips"><span class="chip">${esc(a[TOPIC])}</span>` +
+           `<span class="chip">${esc(a[SOURCE])}</span>` +
+           (a[DATE] ? `<span class="chip">${day(a[DATE])}</span>` : "") + `</div>` +
+           `<h3><a href="${esc(a[URL_])}" target="_blank" rel="noopener noreferrer">` +
+           `${esc(a[TITLE])}</a></h3>` +
+           (a[SNIPPET] ? `<p class="snip">${esc(a[SNIPPET])}</p>` : "") +
+           `${compare(a[PAGE])}</article>`;
+  };
+
+  let latest = 0;
+  const run = async text => {
+    const token = ++latest;
+    text = text.trim();
+    try {
+      const url = new URL(location.href);
+      text ? url.searchParams.set("q", text) : url.searchParams.delete("q");
+      history.replaceState(null, "", url);
+    } catch (err) { /* file:// pages may refuse; the search still runs */ }
+    if (!text) { out.innerHTML = ""; status.textContent = idle; return; }
+
+    let semantic = true;
+    if (!extractor) status.textContent = "Loading the language model (about 23 MB, " +
+                                         "first search only)…";
+    try { await ready; } catch (err) { semantic = false; }
+    const scores = semantic
+      ? semanticScores((await extractor(text, { pooling: "mean", normalize: true })).data)
+      : wordScores(text);
+    if (token !== latest) return;
+
+    const shown = rank(scores, semantic ? MIN_SIMILARITY : MIN_WORD_SHARE);
+    out.innerHTML = shown.map(i => articles[i][STORY] >= 0
+      ? storyCard(articles[i][STORY], scores) : articleCard(i)).join("")
+      || `<p class="empty">Nothing in the collection is close to “${esc(text)}”.</p>`;
+    status.textContent = semantic
+      ? `Closest matches for “${text}” across ${INDEX.count.toLocaleString("en")} articles.`
+      : `Couldn’t load the language model, which needs an internet connection the ` +
+        `first time. Showing word matches for “${text}” instead.`;
+  };
+
+  form.addEventListener("submit", event => { event.preventDefault(); run(input.value); });
+  const initial = new URLSearchParams(location.search).get("q");
+  if (initial) { input.value = initial; run(initial); }
+}
+</script>"""
+
+
+def search_page(generated):
+    body = (
+        '<div class="sheet"><header>'
+        '<h1>Search every article</h1>'
+        '<p class="lede">Everything Newseye has collected, not only the stories on the '
+        'dashboard. Articles that several outlets wrote about the same event are shown '
+        'together as one story.</p></header>'
+        f'<form id="sform" class="bigsearch" role="search">{ICON["search"]}'
+        '<input id="sq" name="q" type="search" autocomplete="off" '
+        'placeholder="e.g. police shot protesters" aria-label="Search every article">'
+        '<button type="submit">Search</button></form>'
+        '<p class="hint" id="sstatus"></p><div id="sresults"></div>'
+        '<footer class="end">The search runs in your browser. The first search downloads a '
+        'small language model; what you type is never sent anywhere.</footer></div>'
+    )
+    return shell("Search - Newseye", "Search", body, generated, search=None,
+                 scripts=SEARCH_PAGE_JS)
 
 
 def corpus_stats(clusters):
@@ -715,8 +1032,21 @@ def build(export_path, out_dir):
         path = os.path.join(out_dir, f"story-{cluster['cluster_id']}.html")
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(story_page(cluster, generated))
+    with open(os.path.join(out_dir, "search.html"), "w", encoding="utf-8") as fh:
+        fh.write(search_page(generated))
 
-    print(f"Wrote {len(clusters) + 1} pages to {out_dir}/")
+    # a script rather than JSON: browsers refuse fetch() on file:// pages, but
+    # load a <script src> from beside the page without complaint
+    index = search_index(clusters)
+    if index:
+        index_path = os.path.join(out_dir, "search-index.js")
+        with open(index_path, "w", encoding="utf-8") as fh:
+            fh.write("window.NEWSEYE_INDEX=" + json.dumps(index, separators=(",", ":"))
+                     + ";\n")
+        print(f"  search index: {index['count']:,} articles, "
+              f"{os.path.getsize(index_path) / 1e6:.1f} MB")
+
+    print(f"Wrote {len(clusters) + 2} pages to {out_dir}/")
     print(f"  open {os.path.join(out_dir, 'index.html')}")
 
 

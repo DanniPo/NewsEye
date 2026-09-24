@@ -107,6 +107,3 @@ FRAMING_MIN_SOURCES = 2
 # and mentioned this many times by an outlet before that outlet's score means
 # anything - one sentence is an anecdote, not a frame
 FRAMING_MIN_MENTIONS = 2
-# the gap in signed sentiment (-1..1) at which two outlets are said to frame
-# the same entity differently
-FRAMING_DIVERGENCE = 0.35

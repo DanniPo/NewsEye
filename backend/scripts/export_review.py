@@ -1,39 +1,25 @@
-"""Export active-tier analysis for manual evaluation.
+"""Run the deep analysis over the richest clusters and export it for the site.
 
-Runs the deep pipeline over several clusters and writes one JSON bundle holding
-the intermediates the runner throws away: the exact text stance saw, every parsed
-figure (not only the ones flagged as conflicts, so misses are visible too), and
-NLI distances per pair. Optionally re-runs stance over full bodies as well, which
-is the A/B behind the title+lead cap.
+Writes the JSON bundle build_site.py turns into the static pages. Each cluster
+carries what its story page shows - headlines and links, the coverage table, the
+framing quotes and the figure digest - and nothing else. The same results are
+saved to cluster_analysis as they are produced.
 
-    python -m backend.scripts.export_review --top 8 --ab
+    python -m backend.scripts.export_review --top 14
     python -m backend.scripts.export_review 5 32 1
-
-Article leads are quoted in the output because stance cannot be judged without
-them. This bundle is an evaluation artefact, not the production store - the
-pipeline itself still keeps nothing but derived results.
 """
 import argparse
 import json
 import time
 
 from backend.analysis.claims import extract_claims
-from backend.analysis.consensus import MATCH_SIMILARITY, analyze_cluster_claims
+from backend.analysis.consensus import analyze_cluster_claims
 from backend.analysis.digest import build_digest
-from backend.analysis.figures import (
-    cluster_vocabulary,
-    parse_figures,
-)
 from backend.analysis.framing import analyze_framing
 from backend.analysis.runner import load_cluster, save_analysis, set_status
 from backend.analysis.story import representative_title
 from backend.analysis.subject import derive_subject
-from backend.config import (
-    ANALYSIS_DEEP_READY,
-    CLAIM_MATCH_MAX_DISTANCE,
-    SENTIMENT_MODEL,
-    TITLE_SUMMARY_MODEL,
-)
+from backend.config import ANALYSIS_DEEP_READY
 from backend.db.connection import get_cursor
 
 DEFAULT_OUTPUT = "review_export.json"
@@ -52,27 +38,6 @@ def multi_source_clusters(limit):
             LIMIT %s
         """, (limit,))
         return [r["id"] for r in cur.fetchall()]
-
-
-def all_figures(claims):
-    """Every parsed figure with the unit and subject that decided its placement."""
-    ubiquitous = cluster_vocabulary(claims)
-    rows = []
-    for claim in claims:
-        for figure in parse_figures(claim["text"]):
-            tokens = figure["subject"]["tokens"] - ubiquitous
-            rows.append({
-                "source": claim.get("source"),
-                "figure": figure["text"],
-                "value": figure["value"],
-                "unit": figure["unit"],
-                "state": figure["state"],
-                "subject": sorted(tokens),
-                "dropped_as_cluster_vocab": sorted(figure["subject"]["tokens"] & ubiquitous),
-                "typed": bool(figure["unit"]),
-                "claim": claim["text"],
-            })
-    return rows, sorted(ubiquitous)
 
 
 def analyse(cluster_id):
@@ -103,7 +68,6 @@ def analyse(cluster_id):
         unread_sources=[a["source_name"] for a, b in zip(articles, bodies, strict=True) if not b])
     framing = analyze_framing(claims)
     digest = build_digest(claims, articles)
-    figures, ubiquitous = all_figures(claims)
     subject = derive_subject(titles)
 
     result = {"title_summary": title_summary, "consensus": groups,
@@ -111,36 +75,24 @@ def analyse(cluster_id):
     retrieved = sum(1 for b in bodies if b)
     save_analysis(cluster_id, result, retrieved)
     set_status(cluster_id, ANALYSIS_DEEP_READY)
+    print(f"  done in {time.time() - started:.1f}s ({retrieved}/{len(articles)} fetched, "
+          f"{len(claims)} claims, {len(digest)} figures)")
 
     return {
         "cluster_id": cluster_id,
         "topic_label": cluster["topic_label"],
-        "article_count": cluster["article_count"],
         "coherence": cluster.get("coherence"),
         "retrieved": retrieved,
-        "seconds": round(time.time() - started, 1),
         "title_summary": title_summary,
         "subject": subject,
         "articles": [
-            {
-                "article_id": a["id"],
-                "source": a["source_name"],
-                "title": a["title"],
-                "url": a["url"],
-                "fetched": bool(b),
-                "body_chars": len(b or ""),
-            }
+            {"source": a["source_name"], "title": a["title"], "url": a["url"],
+             "fetched": bool(b)}
             for a, b in zip(articles, bodies, strict=True)
         ],
         "consensus": groups,
         "framing": framing,
         "figure_digest": digest,
-        "figures": figures,
-        "cluster_vocabulary": ubiquitous,
-        "claim_count": len(claims),
-        # every claim, not just the ones carrying a figure: cluster_vocabulary is
-        # measured over all of them, so a recheck needs the same input to agree
-        "claims": [{"text": c["text"], "source": c.get("source")} for c in claims],
     }
 
 
@@ -155,16 +107,7 @@ def main():
     ids = args.clusters or multi_source_clusters(args.top or 8)
     print(f"Analysing {len(ids)} clusters: {ids}")
 
-    bundle = {
-        "generated_at": time.strftime("%Y-%m-%d %H:%M"),
-        "config": {
-            "claim_match_max_distance": CLAIM_MATCH_MAX_DISTANCE,
-            "claim_match_min_similarity": round(MATCH_SIMILARITY, 3),
-            "summary_model": TITLE_SUMMARY_MODEL,
-            "sentiment_model": SENTIMENT_MODEL,
-        },
-        "clusters": [],
-    }
+    bundle = {"generated_at": time.strftime("%Y-%m-%d %H:%M"), "clusters": []}
 
     for index, cluster_id in enumerate(ids, start=1):
         print(f"[{index}/{len(ids)}] cluster {cluster_id}...", flush=True)
@@ -175,10 +118,6 @@ def main():
             continue
         if entry:
             bundle["clusters"].append(entry)
-            print(f"  done in {entry['seconds']}s "
-                  f"({entry['retrieved']}/{len(entry['articles'])} fetched, "
-                  f"{entry['claim_count']} claims, "
-                  f"{len(entry['figure_digest'])} figures)")
 
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(bundle, fh, indent=1, default=str)
