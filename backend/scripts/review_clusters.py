@@ -2,6 +2,7 @@
 import csv
 import os
 from collections import defaultdict
+
 from backend.db.connection import get_cursor
 
 OUTPUT_PATH = "cluster_review.csv"
@@ -53,7 +54,7 @@ def review():
             print("=" * 78)
             print(f"Cluster {cid} | label: {c['label']} | {len(c['articles'])} articles")
             print("=" * 78)
-            for title, source, category in c["articles"]:
+            for title, source, _category in c["articles"]:
                 print(f"  [{(source or '?')[:18]:<18}] {title[:70]}")
 
             verdict = input("\nVerdict (c/m/b/l/s/q): ").strip().lower()

@@ -239,7 +239,7 @@ FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
          'family=Source+Sans+3:wght@400;600;700&display=swap">')
 
 # Inline so the pages work from the filesystem with no network and no build step.
-I = {
+ICON = {
  "eye": '<svg viewBox="0 0 24 24" fill="none" stroke="#052A25" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12S19 18.5 12 18.5 1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="2.6"/></svg>',
  "grid": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
  "layers": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="M2 12l10 5 10-5"/><path d="M2 17l10 5 10-5"/></svg>',
@@ -295,7 +295,7 @@ def coverage_table(cluster):
     head = "".join(
         f'<th scope="col"{" class=\'na\'" if o in unread else ""}>{e(o)}</th>'
         for o in outlets)
-    rows, carried = [], {o: 0 for o in outlets}
+    rows, carried = [], dict.fromkeys(outlets, 0)
     for group in cluster["consensus"]:
         reported = set(group.get("reported_by") or [])
         cells = []
@@ -436,10 +436,10 @@ def rail(active):
     items = []
     for href, icon, label in NAV:
         on = ' class="on"' if label == active else ""
-        items.append(f'<a href="{href}"{on}>{I[icon]}<span>{e(label)}</span></a>')
+        items.append(f'<a href="{href}"{on}>{ICON[icon]}<span>{e(label)}</span></a>')
     return (
         '<aside class="rail">'
-        f'<div class="brand"><span class="glyph">{I["eye"]}</span><b>Newseye</b></div>'
+        f'<div class="brand"><span class="glyph">{ICON["eye"]}</span><b>Newseye</b></div>'
         f'<nav>{"".join(items)}</nav>'
         '<div class="who"><span class="av">KE</span><div>'
         '<span>Kenyan reader</span><small>Demonstration</small></div></div>'
@@ -454,7 +454,7 @@ def shell(title, active, body, generated, searchable=False):
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f'<title>{e(title)}</title>\n{FONTS}\n<style>{CSS}</style>\n</head>\n<body>\n'
         f'<div class="app">{rail(active)}<div class="main">'
-        f'<div class="topbar"><label class="search">{I["search"]}'
+        f'<div class="topbar"><label class="search">{ICON["search"]}'
         f'<input type="search" placeholder="{e(hint)}"{attrs}></label>'
         f'<span class="stamp">Run of {e(generated)}</span></div>'
         f'<div class="content">{body}</div></div></div>\n'
@@ -484,7 +484,7 @@ SEARCH_JS = """<script>
 
 def stat(label, value, sub, icon):
     return (f'<div class="stat"><div class="row"><span class="lbl">{e(label)}</span>'
-            f'<span class="ico">{I[icon]}</span></div>'
+            f'<span class="ico">{ICON[icon]}</span></div>'
             f'<div class="big">{e(value)}</div>'
             f'<div class="sub">{sub}</div></div>')
 
@@ -502,7 +502,7 @@ def story_tile(cluster):
     coherence = cluster.get("coherence") or 0
 
     chips = [cluster.get("topic_label") or "General"]
-    chips += [s for s in sources[:2]]
+    chips += list(sources[:2])
     badges = []
     if gaps:
         badges.append(f'<span class="badge gap">{gaps} '
@@ -522,7 +522,7 @@ def story_tile(cluster):
         f'data-find="{e(find)}">'
         f'<div class="chips">{chips_html}</div>'
         f'<h3>{e(trim(cluster.get("title_summary") or "Untitled story", 96))}</h3>'
-        f'<div class="srcline">{I["doc"]}<span>{len(sources)} outlets covered this'
+        f'<div class="srcline">{ICON["doc"]}<span>{len(sources)} outlets covered this'
         f' &middot; {len(read)} readable</span></div>'
         f'<div class="bar"><div class="keys">'
         f'<span>{shared} carried by all</span>'
@@ -618,7 +618,7 @@ def story_page(cluster, generated):
                  f'that in mind.</div>')
     subject = cluster.get("subject")
     body = (
-        f'<a class="back" href="index.html">{I["arrow"]}All stories</a>'
+        f'<a class="back" href="index.html">{ICON["arrow"]}All stories</a>'
         '<div class="sheet"><header>'
         f'<h1>{e(trim(cluster.get("title_summary") or "Untitled story", 110))}</h1>'
         f'<p class="lede">{sources} outlets covered this. {cluster["retrieved"]} of '

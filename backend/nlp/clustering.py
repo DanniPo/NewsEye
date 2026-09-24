@@ -1,14 +1,16 @@
 import time
+from collections import Counter, defaultdict
+
 import hdbscan
 import numpy as np
-from collections import defaultdict, Counter
+
 from backend.config import (
     CLUSTER_MIN_COHERENCE,
+    CLUSTER_WINDOW_DAYS,
+    FALLBACK_LABEL,
     HDBSCAN_MIN_CLUSTER_SIZE,
     HDBSCAN_MIN_SAMPLES,
-    CLUSTER_WINDOW_DAYS,
     MAX_CLUSTER_SHARE,
-    FALLBACK_LABEL,
 )
 from backend.db.connection import get_cursor
 from backend.nlp.classification import classify_topics_batch
@@ -57,7 +59,7 @@ def run_clustering(min_cluster_size=HDBSCAN_MIN_CLUSTER_SIZE,
     labels = clusterer.fit_predict(embeddings)
 
     cluster_map = defaultdict(list)
-    for article_id, label in zip(article_ids, labels):
+    for article_id, label in zip(article_ids, labels, strict=True):
         if label != -1:
             cluster_map[label].append(article_id)
 
@@ -160,7 +162,7 @@ if __name__ == "__main__":
         n_clusters, n_noise = run_clustering()
         print(f"Found {n_clusters} clusters, {n_noise} noise points")
     except DegenerateClustering as exc:
-        raise SystemExit(f"Clustering rejected: {exc}")
+        raise SystemExit(f"Clustering rejected: {exc}") from exc
 
     # the passive tier is clusters *and* their summaries: rebuilding the clusters
     # without refilling the summaries leaves the browse view blank until somebody

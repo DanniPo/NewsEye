@@ -1,13 +1,17 @@
 import time
+
 from backend.config import (
-    ARTICLES_PER_FEED, RSS_FEEDS, EMBED_MAX_CHARS, FETCH_FULL_TEXT,
+    ARTICLES_PER_FEED,
+    EMBED_MAX_CHARS,
+    FETCH_FULL_TEXT,
+    RSS_FEEDS,
 )
+from backend.db.queries import article_exists, insert_article
+from backend.ingestion.dedupe import clean_text, make_identifier, standardize_url
+from backend.ingestion.fetch import build_embed_text, fetch_many
 from backend.ingestion.rss import fetch_feed, parse_datetime
-from backend.ingestion.dedupe import clean_text, standardize_url, make_identifier
-from backend.ingestion.fetch import fetch_many, build_embed_text
-from backend.nlp.embeddings import generate_embeddings_batch
 from backend.nlp.classification import classify_topics_batch
-from backend.db.queries import insert_article, article_exists
+from backend.nlp.embeddings import generate_embeddings_batch
 
 
 def run_ingestion():
@@ -19,7 +23,7 @@ def run_ingestion():
         parsed = fetch_feed(feed_config["rss_url"])
 
         new_articles = []
-        for i, entry in enumerate(parsed.entries[:ARTICLES_PER_FEED], start=1):
+        for entry in parsed.entries[:ARTICLES_PER_FEED]:
             title = clean_text(entry.get("title", ""))
             url = clean_text(entry.get("link", ""))
             snippet = clean_text(entry.get("summary", ""))[:150]
@@ -55,11 +59,11 @@ def run_ingestion():
 
         # batch embeddings + classification across all new articles in this feed
         embed_texts = [build_embed_text(a["title"], a["snippet"], body, EMBED_MAX_CHARS)
-                       for a, body in zip(new_articles, bodies)]
+                       for a, body in zip(new_articles, bodies, strict=True)]
         embeddings = generate_embeddings_batch(embed_texts)
         categories = classify_topics_batch([a["title"] for a in new_articles])
 
-        for article, embedding, (category, _) in zip(new_articles, embeddings, categories):
+        for article, embedding, (category, _) in zip(new_articles, embeddings, categories, strict=True):
             inserted = insert_article(article["identifier"], source_name, article["title"], article["url"],
                                        article["url_canon"], article["published"], article["snippet"],
                                        embedding, category)

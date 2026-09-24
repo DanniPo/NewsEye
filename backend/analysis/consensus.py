@@ -16,7 +16,8 @@ figure, three do not.
 import numpy as np
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
-from backend.config import NLI_MODEL, NLI_MAX_COSINE_DISTANCE
+
+from backend.config import NLI_MAX_COSINE_DISTANCE, NLI_MODEL
 from backend.nlp.embeddings import model as embed_model
 
 # NLI is the expensive stage and returns "neutral" for anything that is not already
@@ -113,7 +114,7 @@ def analyze_cluster_claims(claims, all_sources=None, unread_sources=None):
         relations = compare_to_anchor(anchor["text"], [c["text"] for c in others])
 
         members = []
-        for claim, (_, distance), (relation, score) in zip(others, bucket, relations):
+        for claim, (_, distance), (relation, score) in zip(others, bucket, relations, strict=True):
             # an outlet restating itself is not a contradiction between sources.
             # Every contradiction this has ever produced on real text was either a
             # same-source pair or two rows of a table, never two papers disagreeing.

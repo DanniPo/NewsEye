@@ -1,13 +1,16 @@
 """Sweep HDBSCAN parameters to find settings that avoid degenerate clustering."""
 import sys
+from collections import Counter
+
 import hdbscan
 import numpy as np
-from collections import Counter
+
 from backend.config import CLUSTER_WINDOW_DAYS, MAX_CLUSTER_SHARE
 from backend.nlp.clustering import load_articles, parse_embedding
 
+
 def summarize(labels):
-    counts = Counter(l for l in labels if l != -1)
+    counts = Counter(x for x in labels if x != -1)
     noise = int((labels == -1).sum())
     if not counts:
         return 0, noise, 0

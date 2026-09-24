@@ -1,5 +1,7 @@
-from .connection import get_cursor
 from backend.config import ZERO_SHOT_MODEL
+
+from .connection import get_cursor
+
 
 def article_exists(identifier):
     with get_cursor() as cur:

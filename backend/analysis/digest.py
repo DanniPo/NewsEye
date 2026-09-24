@@ -19,7 +19,11 @@ Three tiers, most comparable first:
 import re
 
 from backend.analysis.figures import (
-    claim_scope, classify_measure, cluster_vocabulary, is_cumulative, parse_figures,
+    claim_scope,
+    classify_measure,
+    cluster_vocabulary,
+    is_cumulative,
+    parse_figures,
 )
 
 # spans whose numbers are never quantities being reported: a date, a clock time,
@@ -254,6 +258,7 @@ def rank_by_similarity(members):
         return members
 
     import numpy as np
+
     from backend.nlp.embeddings import model as embed_model
 
     vectors = np.asarray(embed_model.encode(
@@ -262,7 +267,7 @@ def rank_by_similarity(members):
     centroid = vectors.mean(axis=0)
     norm = np.linalg.norm(centroid)
     scores = vectors @ (centroid / norm) if norm else np.ones(len(members))
-    for row, score in zip(members, scores):
+    for row, score in zip(members, scores, strict=True):
         row["similarity"] = round(float(score), 3)
     return sorted(members, key=lambda r: -r["similarity"])
 

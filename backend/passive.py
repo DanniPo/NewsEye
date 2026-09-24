@@ -22,7 +22,7 @@ import io
 import os
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 # Progress bars are drawn with carriage returns for a terminal that redraws in
 # place. Appended to a file they become one unreadable line per model load. This
@@ -85,7 +85,7 @@ def _cluster_is_due(state, force=False):
         return True, f"{state['new_since_clustering']} articles ingested since last clustering"
     stamp = state["clustered_at"]
     if stamp is not None:
-        age = datetime.now(timezone.utc) - stamp
+        age = datetime.now(UTC) - stamp
         if age >= timedelta(hours=CLUSTER_MAX_AGE_HOURS):
             return True, f"clustering is {age.total_seconds() / 3600:.0f}h old"
         return False, (f"only {state['new_since_clustering']} new articles and "
@@ -143,7 +143,7 @@ def run(force_cluster=False, ingest_only=False, skip_ingest=False):
 
     mark = time.time()
     try:
-        from backend.nlp.clustering import run_clustering, DegenerateClustering
+        from backend.nlp.clustering import DegenerateClustering, run_clustering
         try:
             n_clusters, n_noise = run_clustering()
             print(f"  {n_clusters} clusters, {n_noise} noise")

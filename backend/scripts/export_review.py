@@ -16,18 +16,24 @@ pipeline itself still keeps nothing but derived results.
 import argparse
 import json
 import time
+
 from backend.analysis.claims import extract_claims
 from backend.analysis.consensus import BUCKET_SIMILARITY, analyze_cluster_claims
-from backend.analysis.figures import (
-    classify_measure, cluster_vocabulary, parse_figures,
-)
 from backend.analysis.digest import build_digest
+from backend.analysis.figures import (
+    classify_measure,
+    cluster_vocabulary,
+    parse_figures,
+)
 from backend.analysis.framing import analyze_framing
 from backend.analysis.runner import load_cluster, save_analysis, set_status
-from backend.analysis.subject import derive_subject
 from backend.analysis.story import score_tone, summarize_titles
+from backend.analysis.subject import derive_subject
 from backend.config import (
-    ANALYSIS_DEEP_READY, NLI_MAX_COSINE_DISTANCE, NLI_MODEL, SENTIMENT_MODEL,
+    ANALYSIS_DEEP_READY,
+    NLI_MAX_COSINE_DISTANCE,
+    NLI_MODEL,
+    SENTIMENT_MODEL,
     TITLE_SUMMARY_MODEL,
 )
 from backend.db.connection import get_cursor
@@ -87,7 +93,7 @@ def analyse(cluster_id):
     bodies = fetch_many([a["url"] for a in articles])
 
     texts, claims = [], []
-    for article, body in zip(articles, bodies):
+    for article, body in zip(articles, bodies, strict=True):
         text = body or f"{article['title']} {article['snippet'] or ''}"
         texts.append(text)
         for claim in extract_claims(text):
@@ -98,8 +104,8 @@ def analyse(cluster_id):
 
     groups = analyze_cluster_claims(
         claims,
-        all_sources=[a["source_name"] for a, b in zip(articles, bodies) if b],
-        unread_sources=[a["source_name"] for a, b in zip(articles, bodies) if not b])
+        all_sources=[a["source_name"] for a, b in zip(articles, bodies, strict=True) if b],
+        unread_sources=[a["source_name"] for a, b in zip(articles, bodies, strict=True) if not b])
     framing = analyze_framing(claims)
     digest = build_digest(claims, articles)
     figures, ubiquitous = all_figures(claims)
@@ -134,7 +140,7 @@ def analyse(cluster_id):
                 "fetched": bool(b),
                 "body_chars": len(b or ""),
             }
-            for a, b in zip(articles, bodies)
+            for a, b in zip(articles, bodies, strict=True)
         ],
         "consensus": groups,
         "framing": framing,

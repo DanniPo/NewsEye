@@ -1,5 +1,7 @@
 from collections import defaultdict
+
 from backend.db.connection import get_cursor
+
 
 def inspect_noise(title_max_len=80, max_per_category=20):
     with get_cursor() as cur:

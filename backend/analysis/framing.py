@@ -17,7 +17,9 @@ import re
 from collections import defaultdict
 
 from backend.config import (
-    CORPUS_UNIVERSAL_TERMS, FRAMING_DIVERGENCE, FRAMING_MIN_MENTIONS,
+    CORPUS_UNIVERSAL_TERMS,
+    FRAMING_DIVERGENCE,
+    FRAMING_MIN_MENTIONS,
     FRAMING_MIN_SOURCES,
 )
 
@@ -110,8 +112,11 @@ def collect_mentions(claims):
     display, mentions = {}, defaultdict(list)
     for key, text, source, sentence in raw:
         target = alias.get(key, key)
-        # show the entity the way the papers wrote it, minus NER's stray brackets
-        surface = _LEADING_ARTICLE.sub("", text.strip(" ()[[]{}.,;:’'\""))
+        # Show the entity the way the papers wrote it, minus NER's stray
+        # punctuation. strip() takes a set of characters here, not a substring,
+        # which is exactly what is wanted: trim any of these from either end.
+        surface = _LEADING_ARTICLE.sub(  # noqa: B005 - character set is deliberate
+            "", text.strip(" ()[]{}.,;:’'\""))
         # Capital FM datelines every story "NAIROBI, Kenya Sep 22", so NER hands
         # back the city shouted. Prefer any mixed-case wording of the same name,
         # and only title-case as a last resort - a genuine acronym like KEBS
@@ -164,7 +169,7 @@ def analyze_framing(claims, min_sources=FRAMING_MIN_SOURCES,
     scores = sentence_sentiment([sentence for _, _, sentence in flat])
 
     grouped = defaultdict(list)
-    for (entity, source, sentence), score in zip(flat, scores):
+    for (entity, source, sentence), score in zip(flat, scores, strict=True):
         grouped[(entity, source)].append((score, sentence))
 
     records = []

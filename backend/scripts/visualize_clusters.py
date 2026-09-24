@@ -1,6 +1,7 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from sklearn.decomposition import PCA
+
 from backend.db.connection import get_cursor
 
 OUTPUT_PATH = "cluster_visualization.png"
@@ -32,7 +33,7 @@ def visualize_clusters():
     plt.scatter(coords[noise_mask, 0], coords[noise_mask, 1],
                 c="lightgray", s=12, label="noise", alpha=0.5)
 
-    unique_clusters = sorted(set(cid for cid in cluster_ids if cid != -1))
+    unique_clusters = sorted({cid for cid in cluster_ids if cid != -1})
     cmap = plt.get_cmap("tab20", max(len(unique_clusters), 1))
     for i, cid in enumerate(unique_clusters):
         mask = np.array(cluster_ids) == cid

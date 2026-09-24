@@ -17,18 +17,26 @@ rule on them.
 import json
 import sys
 import time
-from backend.config import (
-    ANALYSIS_DEEP_READY, CLUSTER_MIN_COHERENCE, ANALYSIS_FAILED, ANALYSIS_MAX_ARTICLES, ANALYSIS_PREVIEW_READY,
-    NLI_MODEL, SENTIMENT_MODEL, TITLE_SUMMARY_MODEL,
-)
-from backend.db.connection import get_cursor
-from backend.ingestion.fetch import fetch_many
+
 from backend.analysis.claims import extract_claims
 from backend.analysis.consensus import analyze_cluster_claims
 from backend.analysis.digest import build_digest, digest_groups, summarise
 from backend.analysis.framing import analyze_framing, describe_framing
-from backend.analysis.story import summarize_titles, score_tone
+from backend.analysis.story import score_tone, summarize_titles
 from backend.analysis.subject import derive_subject
+from backend.config import (
+    ANALYSIS_DEEP_READY,
+    ANALYSIS_FAILED,
+    ANALYSIS_MAX_ARTICLES,
+    ANALYSIS_PREVIEW_READY,
+    CLUSTER_MIN_COHERENCE,
+    NLI_MODEL,
+    SENTIMENT_MODEL,
+    TITLE_SUMMARY_MODEL,
+)
+from backend.db.connection import get_cursor
+from backend.ingestion.fetch import fetch_many
+
 
 def load_cluster(cluster_id):
     with get_cursor() as cur:
@@ -180,7 +188,7 @@ def _run_deep_analysis(cluster_id):
 
     mark = time.time()
     texts, claims = [], []
-    for article, body in zip(articles, bodies):
+    for article, body in zip(articles, bodies, strict=True):
         text = body or f"{article['title']} {article['snippet'] or ''}"
         texts.append(text)
         for claim in extract_claims(text):
@@ -196,8 +204,8 @@ def _run_deep_analysis(cluster_id):
     mark = time.time()
     groups = analyze_cluster_claims(
         claims,
-        all_sources=[a["source_name"] for a, b in zip(articles, bodies) if b],
-        unread_sources=[a["source_name"] for a, b in zip(articles, bodies) if not b])
+        all_sources=[a["source_name"] for a, b in zip(articles, bodies, strict=True) if b],
+        unread_sources=[a["source_name"] for a, b in zip(articles, bodies, strict=True) if not b])
     timings["nli"] = time.time() - mark
 
     mark = time.time()
@@ -335,4 +343,4 @@ if __name__ == "__main__":
         else:
             print_report(analyze_cluster(cluster, refresh=refresh))
     except ClusterNotFound as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from exc

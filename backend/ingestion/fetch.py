@@ -1,12 +1,15 @@
 """Transient full-text fetching: used by the active tier, never stored."""
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 import trafilatura
-from concurrent.futures import ThreadPoolExecutor
+
 from backend.config import (
-    FETCH_CONCURRENCY, FETCH_DELAY_SECONDS, MIN_BODY_CHARS,
+    FETCH_CONCURRENCY,
+    FETCH_DELAY_SECONDS,
+    MIN_BODY_CHARS,
 )
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; NewseyeBot/1.0)"}

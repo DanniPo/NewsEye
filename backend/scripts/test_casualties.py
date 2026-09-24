@@ -18,11 +18,11 @@ SHOULD_SEPARATE means "showing these side by side would mislead".
 
     python -m backend.scripts.test_casualties
 """
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from backend.analysis.digest import build_digest, digest_groups
 
-T0 = datetime(2026, 9, 16, 9, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 9, 16, 9, 0, tzinfo=UTC)
 def at(hours):
     return T0 + timedelta(hours=hours)
 

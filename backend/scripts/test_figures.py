@@ -9,7 +9,7 @@ digest_groups: one group across two outlets, or none.
     python -m backend.scripts.test_figures
 """
 from backend.analysis.digest import build_digest, digest_groups
-from backend.analysis.figures import parse_figures, classify_measure
+from backend.analysis.figures import classify_measure, parse_figures
 
 # pairs that must be grouped, and pairs that must not - the second list is the
 # regression guard for the subject/unit matching

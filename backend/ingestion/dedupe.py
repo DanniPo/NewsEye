@@ -1,6 +1,7 @@
 import hashlib
 import re
 
+
 def clean_text(s):
     return re.sub(r"\s+", " ", (s or "")).strip()
 

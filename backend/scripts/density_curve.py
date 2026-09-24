@@ -16,7 +16,9 @@ import hdbscan
 import numpy as np
 
 from backend.config import (
-    CLUSTER_MIN_COHERENCE, HDBSCAN_MIN_CLUSTER_SIZE, HDBSCAN_MIN_SAMPLES,
+    CLUSTER_MIN_COHERENCE,
+    HDBSCAN_MIN_CLUSTER_SIZE,
+    HDBSCAN_MIN_SAMPLES,
 )
 from backend.db.connection import get_cursor
 from backend.nlp.clustering import cluster_coherence, parse_embedding
@@ -71,7 +73,7 @@ def main():
     for fraction in FRACTIONS:
         n = max(int(total * fraction), HDBSCAN_MIN_CLUSTER_SIZE + 1)
         runs = []
-        for trial in range(TRIALS if fraction < 1.0 else 1):
+        for _ in range(TRIALS if fraction < 1.0 else 1):
             picks = rng.sample(range(total), n)
             runs.append(measure([sources[i] for i in picks], vectors[picks]))
         clusters = sum(r[0] for r in runs) / len(runs)
@@ -90,7 +92,7 @@ def main():
     if t0 > 0 and n1 > n0:
         exponent = np.log(t1 / t0) / np.log(n1 / n0)
         print(f"\nfitted exponent over the sampled range: {exponent:.2f}")
-        print(f"  (1.0 = linear; above 1.0 = each extra article is worth more than the last)")
+        print("  (1.0 = linear; above 1.0 = each extra article is worth more than the last)")
         print(f"  a doubling of the corpus implies x{2 ** exponent:.1f} three-source clusters")
 
 

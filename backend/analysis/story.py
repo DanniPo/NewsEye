@@ -8,6 +8,7 @@ seen "Kipchumba".
 """
 import torch
 from transformers import pipeline
+
 from backend.config import SENTIMENT_MODEL
 
 _sentiment = None
@@ -33,6 +34,7 @@ def representative_title(titles):
     middle of it. Nothing can be invented because nothing is generated.
     """
     import numpy as np
+
     from backend.nlp.embeddings import model as embed_model
 
     cleaned = []

@@ -22,8 +22,8 @@ import argparse
 import sys
 import time
 
-from backend.analysis.runner import ClusterNotFound, analyze_cluster, set_status
-from backend.config import ANALYSIS_FAILED, CLUSTER_MIN_COHERENCE
+from backend.analysis.runner import ClusterNotFound, analyze_cluster
+from backend.config import CLUSTER_MIN_COHERENCE
 from backend.db.connection import get_cursor
 
 
@@ -97,7 +97,7 @@ def run(min_sources=2, limit=None, refresh=False):
         median = seconds[len(seconds) // 2]
         print(f"  per cluster: median {median:.1f}s, "
               f"slowest {seconds[-1]:.1f}s, fastest {seconds[0]:.1f}s")
-        print(f"  a reader now opens any of these in ~50ms")
+        print("  a reader now opens any of these in ~50ms")
     return 1 if failed else 0
 
 

@@ -1,10 +1,11 @@
 import torch
 from transformers import pipeline
+
 from backend.config import (
-    ZERO_SHOT_MODEL,
-    TOPIC_LABELS,
-    NLI_CONFIDENCE_THRESHOLD,
     FALLBACK_LABEL,
+    NLI_CONFIDENCE_THRESHOLD,
+    TOPIC_LABELS,
+    ZERO_SHOT_MODEL,
 )
 
 DEVICE = 0 if torch.cuda.is_available() else -1

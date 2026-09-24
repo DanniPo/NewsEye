@@ -1,5 +1,7 @@
 from itertools import groupby
+
 from backend.db.connection import get_cursor
+
 
 def inspect_clusters(title_max_len=80):
     with get_cursor() as cur:

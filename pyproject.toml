@@ -1,0 +1,42 @@
+[project]
+name = "newseye"
+version = "0.1.0"
+description = "Cross-source coverage comparison for Kenyan news"
+requires-python = ">=3.13"
+readme = "README.md"
+
+# Dependencies are pinned in requirements.txt rather than here: torch needs a
+# separate index URL for the CUDA build, which project.dependencies cannot
+# express. Keep the two in step if you add a package.
+
+[tool.ruff]
+line-length = 92
+target-version = "py313"
+exclude = [".venv", "site", "logs"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes - undefined names, unused imports
+    "I",    # isort - import ordering
+    "UP",   # pyupgrade
+    "B",    # bugbear - likely bugs
+    "C4",   # comprehension simplifications
+]
+ignore = [
+    # The analysis modules explain measurements in prose. Comments that record
+    # a figure ("77 of 149 summaries carried an invented name") read worse when
+    # wrapped to fit a column, and the explanation is the point of the comment.
+    "E501",
+    # Long f-strings assembling HTML in build_site.py are clearer on one line
+    # than split across implicit concatenations.
+    "E731",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The test suites and experiment scripts run top-level code by design: they are
+# executable reports, not importable modules.
+"backend/scripts/*" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]

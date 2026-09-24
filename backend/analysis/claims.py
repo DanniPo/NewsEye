@@ -1,9 +1,13 @@
 """Claim extraction: pull factual, checkable sentences out of article text."""
 import re
+
 import spacy
+
 from backend.config import (
-    CLAIM_CONTEXT_CHARS, CLAIM_ENTITY_TYPES, CLAIM_MIN_CHARS,
+    CLAIM_CONTEXT_CHARS,
+    CLAIM_ENTITY_TYPES,
     CLAIM_MAX_PER_ARTICLE,
+    CLAIM_MIN_CHARS,
 )
 
 _nlp = None

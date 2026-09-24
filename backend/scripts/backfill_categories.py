@@ -1,5 +1,6 @@
 import sys
 import time
+
 from backend.config import ZERO_SHOT_MODEL
 from backend.db.connection import get_cursor
 from backend.nlp.classification import classify_topics_batch
@@ -21,7 +22,7 @@ def backfill_categories(reclassify_all=False):
         batch = rows[start:start + BATCH_SIZE]
         results = classify_topics_batch([r["title"] for r in batch])
         with get_cursor() as cur:
-            for r, (category, _) in zip(batch, results):
+            for r, (category, _) in zip(batch, results, strict=True):
                 cur.execute("UPDATE articles SET category = %s, category_model = %s WHERE id = %s",
                             (category, ZERO_SHOT_MODEL, r["id"]))
         done = min(start + BATCH_SIZE, len(rows))

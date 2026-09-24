@@ -1,6 +1,8 @@
 """Print the source articles of one cluster for manual review."""
 import sys
+
 from backend.db.connection import get_cursor
+
 
 def show(cluster_id):
     with get_cursor() as cur:
