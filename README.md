@@ -139,14 +139,6 @@ It registers `pythonw.exe` directly (no console window appears) at normal
 priority — Task Scheduler's default priority 7 applies background I/O
 throttling, which stretched a 139-second run past eleven minutes.
 
-## The demo site
-
-```bash
-python -m backend.scripts.export_review --top 14
-python -m backend.scripts.build_site
-# open site/index.html
-```
-
 A static dashboard plus one page per story. **Cluster IDs are reassigned on
 every clustering run**, so `story-N.html` links go stale once the passive tier
 next runs; regenerate both commands together. Stable story IDs are the main
