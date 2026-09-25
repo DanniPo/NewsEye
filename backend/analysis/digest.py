@@ -1,22 +1,3 @@
-"""Figure digest: every number in a story, with its source and context.
-
-The digest does not judge figures. It lays out what each outlet reported so the
-reader can see and interpret it. Each figure carries its sentence, the sentence
-either side, the outlet, a link to the original, and the labels shown beside
-it: who it is credited to, its currency, whether it is a running total, and any
-breakdown. Casualty state and place are read too, but only to decide which
-figures may sit side by side. A number whose unit cannot be read is dropped,
-since there is nothing to show it beside or to say about it.
-
-Figures are tiered by how they can be read:
-
-    shared    at least one other outlet published a figure of the same kind
-    single    only one outlet published a figure of this kind
-
-digest_groups() then places shared figures that appear to count the same thing
-side by side. Placing them together is a layout decision, not a claim that they
-agree or disagree - that is for the reader.
-"""
 import re
 
 from backend.analysis.figures import (
