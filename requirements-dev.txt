@@ -1,0 +1,5 @@
+# Development-only tooling. Not needed to run the pipeline.
+#   pip install -r requirements-dev.txt
+
+# Linting and import ordering, configured in pyproject.toml.
+ruff==0.16.8
