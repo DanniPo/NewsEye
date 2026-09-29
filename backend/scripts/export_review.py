@@ -12,17 +12,13 @@ import argparse
 import json
 import time
 
-from backend.analysis.claims import extract_claims
-from backend.analysis.consensus import analyze_cluster_claims
-from backend.analysis.digest import build_digest
-from backend.analysis.framing import analyze_framing
-from backend.analysis.runner import load_cluster, save_analysis, set_status
-from backend.analysis.story import representative_title
-from backend.analysis.subject import derive_subject
-from backend.config import ANALYSIS_DEEP_READY
+from backend.analysis.runner import ClusterNotFound, analyze_cluster
 from backend.db.connection import get_cursor
 
 DEFAULT_OUTPUT = "review_export.json"
+# what a story page reads, and nothing else
+EXPORTED = ("topic_label", "coherence", "retrieved", "title_summary", "subject",
+            "articles", "consensus", "framing", "figure_digest")
 
 
 def multi_source_clusters(limit):
@@ -41,59 +37,22 @@ def multi_source_clusters(limit):
 
 
 def analyse(cluster_id):
-    from backend.ingestion.fetch import fetch_many
+    """One cluster's page data, from the same deep pass the active tier runs.
 
-    cluster, articles = load_cluster(cluster_id)
-    if not cluster:
+    This used to repeat the pipeline step by step - fetch, claims, coverage,
+    framing, digest - beside runner._run_deep_analysis, so any change to one
+    silently diverged the site from the database. It now calls the runner and
+    only reshapes the result.
+
+    Always a fresh run, never the cache: the site marks outlets "could not
+    read", and which articles were readable is known only during a run.
+    """
+    try:
+        result = analyze_cluster(cluster_id, refresh=True)
+    except ClusterNotFound:
         print(f"  cluster {cluster_id} not found, skipping")
         return None
-
-    started = time.time()
-    titles = [a["title"] for a in articles]
-    title_summary = representative_title(titles)
-    bodies = fetch_many([a["url"] for a in articles])
-
-    claims = []
-    for article, body in zip(articles, bodies, strict=True):
-        text = body or f"{article['title']} {article['snippet'] or ''}"
-        for claim in extract_claims(text):
-            claim["source"] = article["source_name"]
-            claim["article_id"] = article["id"]
-            claim["published_utc"] = article.get("published_utc")
-            claims.append(claim)
-
-    groups = analyze_cluster_claims(
-        claims,
-        all_sources=[a["source_name"] for a, b in zip(articles, bodies, strict=True) if b],
-        unread_sources=[a["source_name"] for a, b in zip(articles, bodies, strict=True) if not b])
-    framing = analyze_framing(claims)
-    digest = build_digest(claims, articles)
-    subject = derive_subject(titles)
-
-    result = {"title_summary": title_summary, "consensus": groups,
-              "framing": framing, "figure_digest": digest, "subject": subject}
-    retrieved = sum(1 for b in bodies if b)
-    save_analysis(cluster_id, result, retrieved)
-    set_status(cluster_id, ANALYSIS_DEEP_READY)
-    print(f"  done in {time.time() - started:.1f}s ({retrieved}/{len(articles)} fetched, "
-          f"{len(claims)} claims, {len(digest)} figures)")
-
-    return {
-        "cluster_id": cluster_id,
-        "topic_label": cluster["topic_label"],
-        "coherence": cluster.get("coherence"),
-        "retrieved": retrieved,
-        "title_summary": title_summary,
-        "subject": subject,
-        "articles": [
-            {"source": a["source_name"], "title": a["title"], "url": a["url"],
-             "fetched": bool(b)}
-            for a, b in zip(articles, bodies, strict=True)
-        ],
-        "consensus": groups,
-        "framing": framing,
-        "figure_digest": digest,
-    }
+    return {"cluster_id": cluster_id, **{key: result[key] for key in EXPORTED}}
 
 
 def main():
