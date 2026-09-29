@@ -4,7 +4,7 @@ The passive tier is meant to stand on its own - a reader browsing the site sees
 story clusters each carrying a one-line summary, before selecting anything. That
 only works if the summaries already exist.
 
-They did not. preview_cluster() ran on demand, and re-clustering truncates
+They did not. preview_cluster() ran on demand, and re-clustering used to truncate
 cluster_analysis, so every rebuild left 149 clusters with no summary until
 somebody opened one. This generates the missing ones in a single pass over the
 summarisation model, which is far cheaper than loading it per request.

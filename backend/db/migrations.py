@@ -39,8 +39,10 @@ BASE_SCHEMA = [
         )
     """),
 
-    # Rebuilt from scratch on every clustering run (TRUNCATE ... RESTART
-    # IDENTITY CASCADE in nlp/clustering.py), so ids are not stable across runs.
+    # Rewritten on every clustering run, but a story that carries over keeps its
+    # id (match_clusters in nlp/clustering.py) and ids are never reused.
+    # created_at is when the story first appeared; clustered_at is the last run
+    # that saw it.
     ("table: clusters", f"""
         CREATE TABLE IF NOT EXISTS clusters (
             id              serial PRIMARY KEY,
@@ -50,7 +52,8 @@ BASE_SCHEMA = [
             label_model     text,
             analysis_status text NOT NULL DEFAULT '{ANALYSIS_PENDING}',
             analysis_error  text,
-            created_at      timestamptz DEFAULT now()
+            created_at      timestamptz DEFAULT now(),
+            clustered_at    timestamptz DEFAULT now()
         )
     """),
 
@@ -63,9 +66,9 @@ BASE_SCHEMA = [
         )
     """),
 
-    # Derived results only. The foreign key is what makes the clustering
-    # TRUNCATE cascade to here, which is why the summarise stage must always
-    # follow the cluster stage.
+    # Derived results only. Clustering deletes a row when its cluster ends or
+    # changes membership, which is why the summarise stage must always follow
+    # the cluster stage.
     ("table: cluster_analysis", """
         CREATE TABLE IF NOT EXISTS cluster_analysis (
             id               serial PRIMARY KEY,
@@ -145,6 +148,20 @@ MIGRATIONS = [
     """),
     ("cluster_analysis.figure_digest", """
         ALTER TABLE cluster_analysis ADD COLUMN IF NOT EXISTS figure_digest jsonb
+    """),
+    # Clusters now keep their id across runs, so created_at stopped meaning
+    # "when clustering last ran" - the passive tier's due-check reads this.
+    # Added without a default, backfilled, and only then defaulted: adding it
+    # with DEFAULT now() stamps every existing row with the migration's own time,
+    # and the due-check then believes clustering just ran.
+    ("clusters.clustered_at", """
+        ALTER TABLE clusters ADD COLUMN IF NOT EXISTS clustered_at timestamptz
+    """),
+    ("clusters.clustered_at backfill", """
+        UPDATE clusters SET clustered_at = created_at WHERE clustered_at IS NULL
+    """),
+    ("clusters.clustered_at default", """
+        ALTER TABLE clusters ALTER COLUMN clustered_at SET DEFAULT now()
     """),
     ("cluster_analysis.cluster_id unique", """
         CREATE UNIQUE INDEX IF NOT EXISTS cluster_analysis_cluster_id_key

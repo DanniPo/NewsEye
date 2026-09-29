@@ -38,6 +38,17 @@ MAX_CLUSTER_SHARE = 0.25
 # invented a connecting narrative, the subject came out as bare "Nairobi", and
 # framing compared entities across unrelated events.
 CLUSTER_MIN_COHERENCE = 0.50
+# Two clusters whose mean embeddings sit within this cosine distance are shown
+# together in search as strands of one larger story. They are never merged in
+# the database: coverage compares outlets on one event, and folding the Dangote
+# groundbreaking into the court order halting it would count every outlet that
+# covered only one of them as having omitted the other. At 0.35 the pairs on a
+# day's clusters were all genuine (Dangote, El Nino, the HIV pill); at 0.45 a
+# death notice, a party launch, memes and a footballer came out as one group.
+RELATED_STORY_MAX_DISTANCE = 0.35
+# a re-clustered story keeps its id when it shares at least this share of the
+# smaller of its old and new memberships (see match_clusters)
+CLUSTER_CONTINUITY_SHARE = 0.5
 # below this zero-shot confidence an article's topic is recorded as FALLBACK_LABEL
 TOPIC_CONFIDENCE_THRESHOLD = 0.75
 SNIPPET_MAX_LENGTH = 150
