@@ -14,11 +14,20 @@ For a media literacy site the second is the useful one. A reader looking for
 "housing levy" wants the story several outlets covered, not twelve separate
 copies of it.
 
+search_story_groups() goes one step further and sets related stories side by
+side - the Dangote groundbreaking next to the court order halting it - without
+merging them, since each is still its own comparison.
+
     python -m backend.nlp.search "police killed protesters"
     python -m backend.nlp.search --articles "housing levy"
+    python -m backend.nlp.search --ungrouped "dangote refinery"
 """
 import argparse
 
+import numpy as np
+from sklearn.cluster import AgglomerativeClustering
+
+from backend.config import RELATED_STORY_MAX_DISTANCE
 from backend.db.connection import get_cursor
 
 
@@ -90,11 +99,67 @@ def search_stories(query, limit=10, candidates=120, max_distance=0.75):
         return [r for r in cur.fetchall() if r["distance"] <= max_distance]
 
 
+def _parse_vector(value):
+    # psycopg2 returns pgvector values as strings like "[0.1,0.2,...]"
+    return np.array([float(x) for x in value.strip("[]").split(",")])
+
+
+def cluster_centroids(cluster_ids):
+    """Mean member embedding per cluster, averaged by pgvector itself."""
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT cm.cluster_id, avg(a.embedding) AS centroid
+            FROM cluster_members cm
+            JOIN articles a ON a.id = cm.article_id
+            WHERE cm.cluster_id = ANY(%s) AND a.embedding IS NOT NULL
+            GROUP BY cm.cluster_id
+        """, (list(cluster_ids),))
+        return {r["cluster_id"]: _parse_vector(r["centroid"]) for r in cur.fetchall()}
+
+
+def group_related(stories, max_distance=RELATED_STORY_MAX_DISTANCE):
+    """Gather ranked stories into groups of related ones, keeping rank order.
+
+    Average linkage rather than single: single linkage chains A to B to C until
+    a death notice and a football profile share a group because each resembled
+    the next. Groups come back ordered by their best-ranked story, and stories
+    within a group keep their own order.
+    """
+    if len(stories) < 2:
+        return [[s] for s in stories]
+    centroids = cluster_centroids(s["cluster_id"] for s in stories)
+    vectors = np.array([centroids[s["cluster_id"]] for s in stories])
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+    labels = AgglomerativeClustering(
+        n_clusters=None, metric="cosine", linkage="average",
+        distance_threshold=max_distance,
+    ).fit_predict(vectors)
+    groups = {}
+    for story, label in zip(stories, labels, strict=True):
+        groups.setdefault(label, []).append(story)
+    return list(groups.values())
+
+
+def search_story_groups(query, limit=10, **kwargs):
+    """search_stories(), with related stories grouped under one result."""
+    return group_related(search_stories(query, limit=limit, **kwargs))
+
+
+def _print_story(row, indent="  "):
+    coherence = f"{row['coherence']:.2f}" if row["coherence"] is not None else " - "
+    print(f"{indent}{row['distance']:.3f}  cluster {row['cluster_id']} | "
+          f"{row['sources']} outlets | {row['article_count']} articles | coh {coherence}")
+    print(f"{indent}        {(row['title_summary'] or row['best_title'])[:82]}")
+    print(f"{indent}        best match: [{row['best_source']}] {row['best_title'][:62]}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("query", nargs="+")
     parser.add_argument("--articles", action="store_true",
                         help="return individual articles instead of stories")
+    parser.add_argument("--ungrouped", action="store_true",
+                        help="list stories one by one, without grouping related ones")
     parser.add_argument("--limit", type=int, default=10)
     args = parser.parse_args()
     query = " ".join(args.query)
@@ -108,14 +173,25 @@ def main():
                   f"{cluster:<5} {row['title'][:66]}")
         return
 
-    rows = search_stories(query, limit=args.limit)
-    print(f'{len(rows)} stories for "{query}"')
-    for row in rows:
-        coherence = f"{row['coherence']:.2f}" if row["coherence"] is not None else " - "
-        print(f"\n  {row['distance']:.3f}  cluster {row['cluster_id']} | "
-              f"{row['sources']} outlets | {row['article_count']} articles | coh {coherence}")
-        print(f"          {(row['title_summary'] or row['best_title'])[:82]}")
-        print(f"          best match: [{row['best_source']}] {row['best_title'][:62]}")
+    if args.ungrouped:
+        rows = search_stories(query, limit=args.limit)
+        print(f'{len(rows)} stories for "{query}"')
+        for row in rows:
+            print()
+            _print_story(row)
+        return
+
+    groups = search_story_groups(query, limit=args.limit)
+    stories = sum(len(g) for g in groups)
+    print(f'{stories} stories in {len(groups)} results for "{query}"')
+    for group in groups:
+        print()
+        if len(group) == 1:
+            _print_story(group[0])
+            continue
+        print(f"  related coverage - {len(group)} stories")
+        for row in group:
+            _print_story(row, indent="    ")
 
 
 if __name__ == "__main__":
