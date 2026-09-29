@@ -198,7 +198,15 @@ def _run_deep_analysis(cluster_id):
     print(f"Subject: {subject}")
 
     result = {"title_summary": title_summary, "consensus": groups,
-              "subject": subject, "framing": framing, "figure_digest": digest}
+              "subject": subject, "framing": framing, "figure_digest": digest,
+              # Not stored: which articles could be read exists only for this
+              # run, since the text itself is discarded. The static site needs
+              # it to mark outlets "could not read" rather than as omitting.
+              "topic_label": cluster["topic_label"], "coherence": coherence,
+              "retrieved": got,
+              "articles": [{"source": a["source_name"], "title": a["title"],
+                            "url": a["url"], "fetched": bool(b)}
+                           for a, b in zip(articles, bodies, strict=True)]}
     save_analysis(cluster_id, result, got)
     set_status(cluster_id, ANALYSIS_DEEP_READY)
     total = time.time() - started
