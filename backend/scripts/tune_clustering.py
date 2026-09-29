@@ -29,7 +29,10 @@ def main():
     best = []
     for mcs in (2, 3, 4, 5, 6):
         for ms in (1, 2, 3):
-            for eps in (0.0, 0.1, 0.2):
+            # Euclidean on unit vectors, so eps e is cosine distance e*e/2. The
+            # old 0.1-0.2 sweep changed nothing: no two clusters' linkage is
+            # that close. Merging starts near 0.7 and runs away by 0.8.
+            for eps in (0.0, 0.7, 0.75, 0.8):
                 cl = hdbscan.HDBSCAN(min_cluster_size=mcs, min_samples=ms,
                                      cluster_selection_epsilon=eps)
                 labels = cl.fit_predict(X)

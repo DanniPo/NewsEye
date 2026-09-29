@@ -5,6 +5,8 @@ import hdbscan
 import numpy as np
 
 from backend.config import (
+    ANALYSIS_PENDING,
+    CLUSTER_CONTINUITY_SHARE,
     CLUSTER_MIN_COHERENCE,
     CLUSTER_WINDOW_DAYS,
     FALLBACK_LABEL,
@@ -80,7 +82,10 @@ def run_clustering(min_cluster_size=HDBSCAN_MIN_CLUSTER_SIZE,
     loose = sum(1 for c in coherences.values() if c < CLUSTER_MIN_COHERENCE)
 
     print(f"Labeling and saving {len(cluster_map)} clusters...")
-    save_clusters(cluster_map, titles, categories, coherences)
+    counts = save_clusters(cluster_map, titles, categories, coherences)
+    print(f"  {counts['unchanged']} carried over unchanged (analysis kept), "
+          f"{counts['changed']} carried over with new members, "
+          f"{counts['new']} new, {counts['ended']} ended")
     print(f"  {loose}/{len(coherences)} below the {CLUSTER_MIN_COHERENCE} coherence "
           f"floor - those are grab-bags, not stories")
 
@@ -102,27 +107,117 @@ def cluster_coherence(vectors):
     return float((similarity.sum() - n) / (n * (n - 1)))
 
 
+def match_clusters(previous, current, min_share=CLUSTER_CONTINUITY_SHARE):
+    """Which previous cluster, if any, each new cluster continues.
+
+    previous maps stored cluster id -> set of article ids; current maps HDBSCAN
+    label -> set of article ids. Returns {label: previous cluster id}.
+
+    Every run re-clusters the whole window from scratch, and used to hand out ids
+    from 1 again. A story page linked as story-42.html then showed a different
+    story after the next run, and every deep analysis was thrown away even when
+    the cluster came back article for article.
+
+    A new cluster continues an old one when they share at least min_share of the
+    smaller of the two. The smaller side is deliberate: a story that grows from 2
+    articles to 6 shares only a third of its new membership, and one that loses
+    its oldest articles off the end of the window shares only part of its old
+    one, and both are still the same story. Pairs are claimed greedily, most
+    shared articles first, so when a story splits the larger half keeps the id
+    and when two merge the larger one's id survives.
+    """
+    owners = defaultdict(set)
+    for cluster_id, members in previous.items():
+        for article_id in members:
+            owners[article_id].add(cluster_id)
+
+    pairs = []
+    for label, members in current.items():
+        candidates = set().union(*(owners[a] for a in members if a in owners))
+        for cluster_id in candidates:
+            old = previous[cluster_id]
+            shared = len(members & old)
+            if shared >= min_share * min(len(members), len(old)):
+                overlap = shared / len(members | old)
+                pairs.append((-shared, -overlap, cluster_id, label))
+    pairs.sort()
+
+    matched, taken = {}, set()
+    for _, _, cluster_id, label in pairs:
+        if label in matched or cluster_id in taken:
+            continue
+        matched[label] = cluster_id
+        taken.add(cluster_id)
+    return matched
+
+
+def _insert_members(cur, cluster_id, members):
+    for article_id in members:
+        cur.execute(
+            "INSERT INTO cluster_members (cluster_id, article_id) VALUES (%s, %s)",
+            (cluster_id, article_id)
+        )
+
+
 def save_clusters(cluster_map, titles, categories, coherences=None):
+    """Write a clustering run, keeping the ids of clusters that carried over.
+
+    Returns how many clusters were carried over unchanged, carried over with
+    different members, created, and ended.
+    """
     # label everything before touching the live tables so a failure leaves them intact
     coherences = coherences or {}
-    staged = [(label_cluster(members, titles, categories), members,
+    staged = [(label, label_cluster(members, titles, categories), members,
                coherences.get(label))
               for label, members in cluster_map.items()]
 
+    counts = Counter()
     with get_cursor() as cur:
-        cur.execute("TRUNCATE clusters, cluster_members RESTART IDENTITY CASCADE")
-        for topic_label, members, coherence in staged:
-            cur.execute(
-                "INSERT INTO clusters (topic_label, article_count, coherence) "
-                "VALUES (%s, %s, %s) RETURNING id",
-                (topic_label, len(members), coherence)
-            )
-            cluster_id = cur.fetchone()["id"]
-            for article_id in members:
+        cur.execute("SELECT cluster_id, article_id FROM cluster_members")
+        previous = defaultdict(set)
+        for row in cur.fetchall():
+            previous[row["cluster_id"]].add(row["article_id"])
+        continued = match_clusters(
+            previous, {label: set(members) for label, members in cluster_map.items()})
+
+        # the cascade takes their members and analysis with them
+        ended = set(previous) - set(continued.values())
+        if ended:
+            cur.execute("DELETE FROM clusters WHERE id = ANY(%s)", (sorted(ended),))
+        counts["ended"] = len(ended)
+
+        for label, topic_label, members, coherence in staged:
+            cluster_id = continued.get(label)
+            if cluster_id is None:
                 cur.execute(
-                    "INSERT INTO cluster_members (cluster_id, article_id) VALUES (%s, %s)",
-                    (cluster_id, article_id)
+                    "INSERT INTO clusters (topic_label, article_count, coherence) "
+                    "VALUES (%s, %s, %s) RETURNING id",
+                    (topic_label, len(members), coherence)
                 )
+                _insert_members(cur, cur.fetchone()["id"], members)
+                counts["new"] += 1
+                continue
+
+            cur.execute(
+                "UPDATE clusters SET topic_label = %s, article_count = %s, "
+                "coherence = %s, clustered_at = now() WHERE id = %s",
+                (topic_label, len(members), coherence, cluster_id)
+            )
+            if set(members) == previous[cluster_id]:
+                counts["unchanged"] += 1
+                continue
+
+            # The analysis describes the old membership. Keeping it would show a
+            # coverage table that leaves out an outlet which is now in the story.
+            cur.execute("DELETE FROM cluster_members WHERE cluster_id = %s", (cluster_id,))
+            _insert_members(cur, cluster_id, members)
+            cur.execute("DELETE FROM cluster_analysis WHERE cluster_id = %s", (cluster_id,))
+            cur.execute(
+                "UPDATE clusters SET analysis_status = %s, analysis_error = NULL "
+                "WHERE id = %s", (ANALYSIS_PENDING, cluster_id)
+            )
+            counts["changed"] += 1
+    return counts
 
 def label_cluster(member_ids, titles, categories):
     """Majority topic across a sample of the cluster's members.

@@ -64,6 +64,9 @@ jobs:
       - name: Figure digest — subject and unit gate
         run: python -m backend.scripts.test_figures
 
+      - name: Cluster ids survive re-clustering
+        run: python -m backend.scripts.test_cluster_ids
+
   schema:
     # Proves the repository can build its own database from nothing. The base
     # tables were once created by hand and only later columns were tracked,

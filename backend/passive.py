@@ -38,7 +38,9 @@ def _read_state():
     with get_cursor() as cur:
         cur.execute("SELECT count(*) AS n FROM articles")
         articles = cur.fetchone()["n"]
-        cur.execute("SELECT count(*) AS n, max(created_at) AS latest FROM clusters")
+        # clustered_at, not created_at: a cluster that carries over keeps the
+        # created_at of the run that first found it
+        cur.execute("SELECT count(*) AS n, max(clustered_at) AS latest FROM clusters")
         row = cur.fetchone()
         # Articles ingested since the last clustering - NOT articles lacking a
         # cluster membership. HDBSCAN leaves roughly half the window as noise and

@@ -49,9 +49,12 @@ Task Scheduler → pythonw.exe -m backend.passive --log logs\passive.log
    summarise one extractive headline per cluster
 ```
 
-Clustering rebuilds `clusters` and `cluster_members` with
-`TRUNCATE ... RESTART IDENTITY CASCADE`, which also clears `cluster_analysis` —
-so the summarise stage is mandatory, not optional.
+Clustering re-runs HDBSCAN over the whole window, then matches each new cluster
+to the stored one it continues (sharing at least half the smaller membership).
+A continued story keeps its id; one with identical members also keeps its
+summary and deep analysis. One whose members changed has its analysis cleared,
+new stories get fresh ids, and ids are never reused. The summarise stage fills
+in what was cleared, so it is still mandatory, not optional.
 
 **Active tier** — on-demand per cluster, ~7–20s. Fetches article text
 transiently, derives claims, coverage, figures and framing, stores only the
@@ -126,7 +129,8 @@ No cloud storage is involved.
 python -m backend.passive                 # ingest, then cluster if due
 python -m backend.passive --cluster       # force the clustering stage
 python -m backend.active --min-sources 3  # pre-compute the deep analysis
-python -m backend.nlp.search "police shot protesters"
+python -m backend.nlp.search "police shot protesters"   # related stories grouped
+python -m backend.scripts.visualize_clusters --topic Politics
 ```
 
 To schedule the passive tier on Windows every two hours:
@@ -139,10 +143,11 @@ It registers `pythonw.exe` directly (no console window appears) at normal
 priority — Task Scheduler's default priority 7 applies background I/O
 throttling, which stretched a 139-second run past eleven minutes.
 
-A static dashboard plus one page per story. **Cluster IDs are reassigned on
-every clustering run**, so `story-N.html` links go stale once the passive tier
-next runs; regenerate both commands together. Stable story IDs are the main
-outstanding piece of work.
+A static dashboard plus one page per story. A story keeps its cluster id across
+clustering runs for as long as it stays in the window, so `story-N.html` links
+survive a re-cluster; a link goes dead only when its story ends. On one run
+against live data, 342 of 348 clusters carried over and 307 kept their
+summaries untouched.
 
 ## Tests
 
@@ -151,9 +156,10 @@ pip install -r requirements-dev.txt
 ruff check backend                          # 0 findings
 python -m backend.scripts.test_casualties   # 15/15
 python -m backend.scripts.test_figures      # 14/14 + 1 documented limitation
+python -m backend.scripts.test_cluster_ids  # 10/10
 ```
 
-All four run on every push via `.github/workflows/ci.yml`, along with a job that
+All of these run on every push via `.github/workflows/ci.yml`, along with a job that
 builds the schema from an empty pgvector database and asserts the result.
 
 Both assert on the shipping figure digest. They were rewritten after the
