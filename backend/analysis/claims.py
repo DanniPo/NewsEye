@@ -1,14 +1,13 @@
 """Claim extraction: pull factual, checkable sentences out of article text."""
 import re
 
-import spacy
-
 from backend.config import (
     CLAIM_CONTEXT_CHARS,
     CLAIM_ENTITY_TYPES,
     CLAIM_MAX_PER_ARTICLE,
     CLAIM_MIN_CHARS,
 )
+from backend.nlp.entities import load_nlp
 
 _nlp = None
 NUMERIC_HINT = re.compile(r"\d|%|\b(million|billion|percent|per cent)\b", re.I)
@@ -29,9 +28,11 @@ FURNITURE = re.compile(
     r"|watch .{0,40}below|click here|share this|caption for|photo: |image: |file photo", re.I)
 
 def get_nlp():
+    # with the Kenyan names list ahead of spaCy's own entity model - see
+    # backend/nlp/entities.py for what that changed
     global _nlp
     if _nlp is None:
-        _nlp = spacy.load("en_core_web_sm", disable=["lemmatizer", "textcat"])
+        _nlp = load_nlp()
     return _nlp
 
 def extract_claims(text, max_claims=CLAIM_MAX_PER_ARTICLE):
@@ -58,7 +59,10 @@ def extract_claims(text, max_claims=CLAIM_MAX_PER_ARTICLE):
         # judge whether two numbers are measuring the same thing. One sentence
         # either side is usually the difference between "1,189 sentenced" and
         # "1,189 sentenced, of whom 300 were minors".
-        window = sentences[max(0, position - 1):position + 2]
+        # the neighbours pass the same furniture check as the claim itself: a
+        # figure's context once ran on into "Login to join the discussion"
+        window = [s for s in sentences[max(0, position - 1):position + 2]
+                  if s is sent or not FURNITURE.search(s.text)]
         context = " ".join(s.text.strip().replace("\n", " ") for s in window)
         claims.append({
             "text": sentence,

@@ -55,6 +55,9 @@ jobs:
           import backend.nlp.clustering, backend.nlp.previews, backend.nlp.search
           import backend.ingestion.runner, backend.db.migrations
           import backend.scripts.build_site, backend.scripts.export_review
+          import backend.nlp.entities, backend.nlp.truecase, backend.analysis.portrayal
+          import backend.nlp.nli, backend.analysis.quotes, backend.analysis.divergence
+          import backend.scripts.pick_showcase
           print('all pipeline modules import')
           "
 
@@ -66,6 +69,21 @@ jobs:
 
       - name: Cluster ids survive re-clustering
         run: python -m backend.scripts.test_cluster_ids
+
+      - name: Kenyan names, institutions and places
+        run: python -m backend.scripts.test_entities
+
+      - name: Portrayal - who speaks, acts and is acted on
+        run: python -m backend.scripts.test_portrayal
+
+      - name: Coverage - NLI checks each match, no false omissions
+        run: python -m backend.scripts.test_coverage
+
+      - name: Quotes - speakers and versions across outlets
+        run: python -m backend.scripts.test_quotes
+
+      - name: Where outlets differ - only checkable differences count
+        run: python -m backend.scripts.test_divergence
 
   schema:
     # Proves the repository can build its own database from nothing. The base

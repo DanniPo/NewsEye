@@ -1,3 +1,5 @@
+import os
+
 RSS_FEEDS = [
     {"name": "Kenya News", "rss_url": "https://www.kenyanews.go.ke/feed/"},
     {"name": "The Kenya Times", "rss_url": "https://thekenyatimes.com/feed/"},
@@ -89,6 +91,27 @@ FETCH_DELAY_SECONDS = 0.4
 # (cosine distance). Drives the coverage table: which outlets carried each fact.
 CLAIM_MATCH_MAX_DISTANCE = 0.4
 
+# --- natural language inference ---
+# The topic classifier's checkpoint is a two-label NLI model (entailment /
+# not_entailment), used only to ask whether two versions of something say the
+# same thing. backend/nlp/nli.py explains why it has no contradiction label, and
+# why that is deliberate.
+NLI_MODEL = ZERO_SHOT_MODEL
+# P(entailment) at or above this counts as "implies"
+NLI_ENTAILS = 0.5
+# Check each coverage-table match with NLI. Similarity alone merged different
+# facts in 17 of 30 hand-checked cross-outlet pairs; see analysis/consensus.py.
+CLAIM_MATCH_NLI = True
+
+# --- quotes (active tier) ---
+# shorter "quotes" are scare quotes and nicknames: a 'modern' police force, "Wantam"
+QUOTE_MIN_WORDS = 4
+# kept per quote; the article itself is discarded, as with claims
+QUOTE_MAX_CHARS = 400
+# two quotes from one speaker in two outlets are the same remark at this
+# embedding similarity; NLI then says how the versions relate
+QUOTE_MATCH_SIMILARITY = 0.7
+
 # analysis_status values on clusters, driving the two-stage summary in the UI
 ANALYSIS_PENDING = "pending"
 ANALYSIS_PREVIEW_READY = "preview_ready"
@@ -118,3 +141,51 @@ FRAMING_MIN_SOURCES = 2
 # and mentioned this many times by an outlet before that outlet's score means
 # anything - one sentence is an anecdote, not a frame
 FRAMING_MIN_MENTIONS = 2
+
+# --- Kenyan entities (names, institutions, places) ---
+# spaCy's small English model, named here so it is never a library default. It
+# tagged Kenyan names and institutions correctly in 26% of headlines and 74% of
+# snippet sentences: it was trained on American news and leans on capitals.
+SPACY_MODEL = "en_core_web_sm"
+# The list that fixes that for known names, loaded before spaCy's own entity
+# model. Plain JSON so it can be read and corrected without touching code.
+KENYAN_ENTITIES_PATH = os.path.join(os.path.dirname(__file__), "data", "kenya_entities.json")
+# Titles that precede a person's name in Kenyan news. They catch names the list
+# has never seen: "CS Mugaa", "MP Wandeto", "Governor Kahiga". 328 different
+# surnames follow one of these somewhere in the corpus. Multi-word titles are
+# written out in full; matching ignores case.
+NAME_TITLES = (
+    "president", "deputy president", "dp", "former president", "prime cs",
+    "prime cabinet secretary", "cs", "cabinet secretary", "ps", "principal secretary",
+    "governor", "deputy governor", "senator", "mp", "mca", "woman rep", "women rep",
+    "speaker", "chief justice", "cj", "justice", "lady justice", "judge", "ig",
+    "inspector general", "attorney general", "auditor general", "controller of budget",
+    "commissioner", "ambassador", "dr", "prof", "professor", "hon", "rev", "bishop",
+    "archbishop", "cardinal", "pastor", "imam", "sheikh",
+    # roles written as titles: "IEBC Chairperson Erastus Ethekon"
+    "chairperson", "chairman", "chairwoman", "chair", "ceo", "director",
+    "director general", "secretary general", "spokesperson", "spokesman",
+)
+
+# --- portrayal (how each outlet presents a public figure) ---
+# Verbs an outlet uses to report what someone said, grouped by what the choice
+# conveys. The groups describe words, not outlets: "claims" distances the writer
+# from the claim, "assures" lends it credit. Shown to readers alongside the verbs
+# themselves; nothing is scored. Two-word entries are verb + particle.
+REPORTING_VERBS = {
+    "said": ("say", "tell", "state", "note", "add", "explain", "announce", "reveal",
+             "respond", "reply", "react", "describe", "disclose", "confirm", "speak",
+             "remark", "address", "write", "report"),
+    "claimed": ("claim", "allege", "insist", "maintain", "contend", "purport"),
+    "promised or assured": ("assure", "reassure", "pledge", "promise", "vow"),
+    "praised": ("hail", "laud", "praise", "commend", "congratulate", "thank", "applaud",
+                "celebrate", "champion"),
+    "criticised": ("slam", "blast", "criticise", "criticize", "castigate", "attack",
+                   "accuse", "blame", "condemn", "decry", "dismiss", "rubbish",
+                   "lash out", "hit back", "fire back", "hit out", "challenge",
+                   "censure", "fault", "rebuke", "mock", "ridicule", "taunt",
+                   "take aim", "take swipe", "take jibe", "take dig"),
+    "denied or defended": ("deny", "defend", "refute", "reject", "dispute", "counter"),
+    "urged or warned": ("urge", "call on", "call for", "appeal", "ask", "implore",
+                        "plead", "warn", "caution", "direct", "order", "demand", "threaten"),
+}
