@@ -33,3 +33,6 @@ cluster_visualization.png
 Thumbs.db
 desktop.ini
 *.swp
+
+# A single-file copy of the static site, for sending: rebuilt by single_file.py.
+dist/

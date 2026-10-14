@@ -57,7 +57,7 @@ jobs:
           import backend.scripts.build_site, backend.scripts.export_review
           import backend.nlp.entities, backend.nlp.truecase, backend.analysis.portrayal
           import backend.nlp.nli, backend.analysis.quotes, backend.analysis.divergence
-          import backend.scripts.pick_showcase
+          import backend.scripts.pick_showcase, backend.scripts.single_file
           print('all pipeline modules import')
           "
 

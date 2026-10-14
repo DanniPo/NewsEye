@@ -28,26 +28,29 @@ without one the previous index is left in place.
 """
 import argparse
 import base64
+import difflib
 import html
 import json
 import os
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 
 from backend.analysis.digest import digest_groups, summarise
+from backend.config import RSS_FEEDS
 
 CSS = """
 :root{--bg:#F4F6F8;--panel:#FFFFFF;--rail:#0E1B2A;--rail-2:#16283C;--ink:#16202B;
 --muted:#667585;--faint:#93A0AD;--rule:#E4E9EE;--accent:#12B39B;--accent-soft:#E2F7F3;
---gap:#C2571E;--gap-soft:#FDF0E6;--ok:#1F7A55;--ok-soft:#E6F4EC;
+--gap:#C2571E;--gap-soft:#FDF0E6;--ok:#1F7A55;--ok-soft:#E6F4EC;--violet:#6E56CF;
 --serif:"Newsreader",Georgia,serif;--sans:"Source Sans 3",ui-sans-serif,system-ui,sans-serif}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0B1219;
 --panel:#131D27;--rail:#0A121B;--rail-2:#16242F;--ink:#E7ECF1;--muted:#93A0AD;
 --faint:#6B7885;--rule:#22303C;--accent:#3FD3BA;--accent-soft:#12312C;--gap:#E0954F;
---gap-soft:#33240F;--ok:#57B98A;--ok-soft:#12301F}}
+--gap-soft:#33240F;--ok:#57B98A;--ok-soft:#12301F;--violet:#A797F0}}
 :root[data-theme=dark]{--bg:#0B1219;--panel:#131D27;--rail:#0A121B;--rail-2:#16242F;
 --ink:#E7ECF1;--muted:#93A0AD;--faint:#6B7885;--rule:#22303C;--accent:#3FD3BA;
---accent-soft:#12312C;--gap:#E0954F;--gap-soft:#33240F;--ok:#57B98A;--ok-soft:#12301F}
+--accent-soft:#12312C;--gap:#E0954F;--gap-soft:#33240F;--ok:#57B98A;--ok-soft:#12301F;
+--violet:#A797F0}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;
@@ -198,6 +201,29 @@ thead th.na{color:var(--faint)}
 td.f{font-family:var(--serif);font-size:14px;line-height:1.4}
 td.m{text-align:center;font-size:15px;font-weight:700}
 td.m.y{color:var(--ok)}td.m.n{color:var(--gap);background:var(--gap-soft)}
+td.m.r{color:var(--violet)}
+.legend i.r{color:var(--violet)}
+details.rel{margin-top:6px;font-family:var(--sans);font-size:12.5px;color:var(--muted)}
+details.rel summary{cursor:pointer;color:var(--violet);font-weight:700}
+details.rel p{margin:5px 0 0;line-height:1.45}
+.remark{border:1px solid var(--rule);border-radius:10px;padding:11px 14px 6px;margin-bottom:10px;
+background:var(--bg)}
+.rhead{display:flex;gap:10px;align-items:baseline;margin-bottom:6px}
+.rhead b{font-size:14.5px}.rhead span{font-size:12px;color:var(--muted)}
+.ver{display:grid;grid-template-columns:130px minmax(0,1fr);gap:12px;padding:8px 0;
+border-top:1px solid var(--rule);align-items:start}
+.vsrc{font-size:12.5px;font-weight:700}
+.ver blockquote{margin:0;font-family:var(--serif);font-size:14px;line-height:1.45}
+.ver mark{background:var(--accent-soft);color:var(--ink);border-radius:3px;padding:0 2px}
+.vrel{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:700;text-transform:uppercase;
+letter-spacing:.04em;border-radius:4px;padding:2px 6px;border:1px solid var(--rule);color:var(--muted)}
+.vrel.q-same{color:var(--ok);border-color:var(--ok)}
+.vrel.q-more,.vrel.q-less{color:var(--accent);border-color:var(--accent)}
+.vrel.q-diff{color:var(--violet);border-color:var(--violet)}
+ul.qlist{margin:0;padding:0 0 4px;list-style:none}
+ul.qlist li{padding:8px 0;border-top:1px solid var(--rule);font-size:13px}
+ul.qlist li span{display:block;font-family:var(--serif);font-size:14px;margin-top:3px}
+@media(max-width:820px){.ver{grid-template-columns:minmax(0,1fr);gap:4px}}
 td.m.q{color:var(--faint);background:var(--bg);font-weight:400}
 tfoot td{font-size:12px;color:var(--muted);border-bottom:none;padding-top:10px;
 text-align:center;font-variant-numeric:tabular-nums}
@@ -221,6 +247,8 @@ background:var(--bg)}
 background:var(--panel);border:1px solid var(--rule);color:var(--muted);
 border-radius:4px;padding:2px 5px}
 .fctx{font-size:13px;color:var(--muted);margin:0;line-height:1.5}
+.fctx strong{color:var(--ink);font-weight:700;background:var(--accent-soft);border-radius:3px;
+padding:0 3px}
 .fctx a{color:var(--accent);font-weight:700;white-space:nowrap}
 .empty{font-size:13.5px;color:var(--muted);font-style:italic}
 
@@ -241,6 +269,78 @@ font:inherit;font-size:14px;font-weight:700;padding:8px 16px;cursor:pointer}
 .hitlink{display:inline-block;margin-top:8px;font-size:13px;font-weight:700;color:var(--accent)}
 footer.end{margin-top:30px;padding-top:14px;border-top:1px solid var(--rule);
 font-size:12.5px;color:var(--faint);line-height:1.55}
+
+/* ---- people ---- */
+.prow{display:grid;grid-template-columns:180px minmax(0,1fr) 200px;gap:12px;align-items:center;
+padding:8px 0;border-bottom:1px solid var(--rule);font-size:13px}
+.prow:first-of-type{border-top:1px solid var(--rule)}
+.prow .o{font-weight:700;line-height:1.25}
+.prow .o small{display:block;font-weight:400;font-size:11px;color:var(--muted)}
+.prow .v{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.prow.none .o{color:var(--muted)}
+.meter{height:8px;border-radius:4px;background:var(--rule);overflow:hidden}
+.meter i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.prow.none .meter{background:transparent;border:1px dashed var(--rule)}
+.roles{display:flex;gap:2px;height:10px;border-radius:5px;overflow:hidden;background:var(--rule)}
+.roles i{display:block;height:100%}
+.r-speaks{background:var(--accent)}.r-acts{background:var(--ok)}.r-acted{background:var(--gap)}
+.r-about{background:var(--violet)}.r-desc{background:var(--muted)}.r-ment{background:var(--faint)}
+.rolekey{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin:2px 0 12px}
+.rolekey span{display:inline-flex;align-items:center;gap:5px}
+.rolekey i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.rtext{font-size:12px;color:var(--muted);text-align:right}
+.pcard{border:1px solid var(--rule);border-radius:10px;padding:13px 15px;margin-bottom:12px;
+background:var(--bg)}
+.phead{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-bottom:9px}
+.phead b{font-size:15px}.phead span{font-size:12px;color:var(--muted)}
+.pfacts{display:grid;grid-template-columns:150px minmax(0,1fr);gap:6px 12px;margin:10px 0 8px;
+font-size:13px}
+.pfacts dt{color:var(--muted);font-weight:600}.pfacts dd{margin:0}
+.pfacts .verbs{display:block;color:var(--muted);font-size:12.5px}
+.role{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;
+letter-spacing:.04em;border-radius:4px;padding:2px 6px;color:var(--panel)}
+.ph li{grid-template-columns:140px minmax(0,1fr)}
+.ph small{display:block;font-size:11px;color:var(--faint);margin-top:3px}
+.pchips{display:flex;flex-wrap:wrap;gap:7px;margin:6px 0 4px}
+.pchip{font-size:13px;font-weight:700;border:1px solid var(--accent);color:var(--accent);
+border-radius:20px;padding:4px 11px}
+.pchip:hover{background:var(--accent-soft)}
+.panel .more{display:block;margin-top:10px;font-size:12.5px;font-weight:700;color:var(--accent)}
+.panel .more-note{margin:10px 0 0;font-size:11.5px;color:var(--muted);line-height:1.45}
+.rank .r a:hover span{color:var(--accent)}
+ul.facts{margin:6px 0 4px;padding-left:18px;font-size:14.5px;line-height:1.5}
+ul.facts li{margin:4px 0}
+table.glance{min-width:660px}
+table.glance thead th{text-align:left}
+table.glance thead th:first-child{width:auto}
+table.glance td{vertical-align:middle}
+table.glance td.o{font-weight:700;width:170px;line-height:1.25}
+table.glance td.o small{display:block;font-weight:400;font-size:11px;color:var(--muted)}
+table.glance td.cov{width:190px}
+table.glance td.cov small{display:block;font-size:11.5px;color:var(--muted);margin-top:4px}
+table.glance td small{color:var(--muted)}
+table.glance tr.none td{color:var(--muted)}
+table.glance td.few{color:var(--faint);font-style:italic}
+details.pdet{border:1px solid var(--rule);border-radius:10px;background:var(--bg);margin-bottom:9px}
+details.pdet summary{cursor:pointer;padding:11px 14px;display:flex;gap:10px;align-items:baseline;
+list-style:none}
+details.pdet summary::-webkit-details-marker{display:none}
+details.pdet summary span{font-size:12.5px;color:var(--muted)}
+details.pdet summary::after{content:"+";margin-left:auto;font-weight:700;color:var(--accent)}
+details.pdet[open] summary::after{content:"–"}
+details.pdet summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:9px}
+details.pdet .pbody{padding:0 14px 12px}
+details.method{margin-top:18px;background:transparent}
+details.method .pbody p,details.method .pbody li{font-size:12.5px;color:var(--muted)}
+table.glance td small{display:block;font-size:11.5px;color:var(--muted);margin-top:3px}
+table.glance td.o a{color:inherit;border-bottom:1px dashed var(--faint)}
+table.glance td.o a:hover{color:var(--accent);border-color:var(--accent)}
+.vt{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+.few{color:var(--faint);font-style:italic}
+p.go{font-size:12.5px;color:var(--accent);font-weight:700;margin:6px 0 2px}
+@media(max-width:820px){.prow{grid-template-columns:minmax(0,1fr);gap:5px}
+.prow .v,.rtext{text-align:left}.pfacts{grid-template-columns:minmax(0,1fr);gap:2px}
+.pfacts dt{margin-top:8px}.ph li{grid-template-columns:minmax(0,1fr)}}
 
 @media(max-width:1080px){.cols{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:820px){
@@ -274,12 +374,14 @@ ICON = {
  "doc": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg>',
  "hash": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 7.5 21M16.5 3 15 21M3.5 8.5h17M3 15.5h17"/></svg>',
  "info": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.5v.01"/></svg>',
+ "person": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7.5 8-7.5s8 3.1 8 7.5"/></svg>',
  "search": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>',
  "arrow": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>',
 }
 
 NAV = (("index.html", "grid", "Dashboard"),
        ("index.html#stories", "layers", "Stories"),
+       ("people.html", "person", "People"),
        ("search.html", "search", "Search"),
        ("index.html#outlets", "globe", "Outlets"),
        ("index.html#gaps", "gap", "Coverage gaps"),
@@ -314,7 +416,9 @@ def trim(text, limit):
 def coverage_table(cluster):
     """Facts down the side, outlets across the top."""
     read = sorted({a["source"] for a in cluster["articles"] if a["fetched"]})
-    unread = sorted({a["source"] for a in cluster["articles"] if not a["fetched"]})
+    # an outlet with one readable article and one blocked one was read, and must
+    # not also appear as an unread column
+    unread = sorted({a["source"] for a in cluster["articles"] if not a["fetched"]} - set(read))
     outlets = read + unread
     if not cluster["consensus"] or not read:
         return '<p class="empty">No fact was carried by more than one readable outlet.</p>'
@@ -325,6 +429,8 @@ def coverage_table(cluster):
     rows, carried = [], dict.fromkeys(outlets, 0)
     for group in cluster["consensus"]:
         reported = set(group.get("reported_by") or [])
+        # analyses saved before NLI checked each match have no "related" key
+        related = {r["source"]: r["text"] for r in group.get("related") or []}
         cells = []
         for o in outlets:
             if o in unread:
@@ -332,10 +438,18 @@ def coverage_table(cluster):
             elif o in reported:
                 cells.append('<td class="m y">&check;</td>')
                 carried[o] += 1
+            elif o in related:
+                cells.append('<td class="m r">&asymp;</td>')
             else:
                 cells.append('<td class="m n">&mdash;</td>')
-        fact = group["anchor"]["text"]
-        rows.append(f'<tr><td class="f">{e(trim(fact, 170))}</td>{"".join(cells)}</tr>')
+        fact = e(trim(group["anchor"]["text"], 170))
+        if related:
+            said = "".join(f'<p><b>{e(o)}:</b> {e(trim(text, 220))}</p>'
+                           for o, text in related.items())
+            fact += (f'<details class="rel"><summary>&asymp; related wording from '
+                     f'{len(related)} outlet{"s" if len(related) != 1 else ""}</summary>'
+                     f'{said}</details>')
+        rows.append(f'<tr><td class="f">{fact}</td>{"".join(cells)}</tr>')
 
     total = len(cluster["consensus"])
     foot = "".join(
@@ -347,6 +461,7 @@ def coverage_table(cluster):
         f'{"".join(rows)}</tbody><tfoot><tr><td>Facts carried</td>{foot}</tr>'
         '</tfoot></table></div>'
         '<div class="legend"><span><i class="y">&check;</i> reported this</span>'
+        '<span><i class="r">&asymp;</i> said something related, not the same</span>'
         '<span><i class="n">&mdash;</i> did not report this</span>'
         '<span><i class="q">?</i> we could not read this outlet</span></div>'
     )
@@ -388,6 +503,64 @@ def framing_block(cluster):
             + "".join(out))
 
 
+# how a version of a quote relates to the first outlet's, in a reader's words
+QUOTE_RELATION = {
+    "same": ("Same words", "q-same"),
+    "says more": ("Adds to it", "q-more"),
+    "says less": ("Shorter version", "q-less"),
+    "worded differently": ("Worded differently", "q-diff"),
+    "not compared": ("Not compared", "q-none"),
+}
+
+
+def marked(text, other):
+    """text with the words that other does not have highlighted."""
+    words, theirs = text.split(), [w.lower().strip(".,;:!?“”\"'") for w in other.split()]
+    mine = [w.lower().strip(".,;:!?“”\"'") for w in words]
+    keep = set()
+    for block in difflib.SequenceMatcher(a=mine, b=theirs, autojunk=False).get_matching_blocks():
+        keep.update(range(block.a, block.a + block.size))
+    return " ".join(e(w) if i in keep else f"<mark>{e(w)}</mark>" for i, w in enumerate(words))
+
+
+def quotes_block(cluster):
+    """Who was quoted, and each outlet's version side by side where they overlap."""
+    remarks = cluster.get("quotes") or []
+    if not remarks:
+        return ""
+    shared = [r for r in remarks if r["outlets"] > 1]
+    single = [r for r in remarks if r["outlets"] == 1]
+    out = []
+    for remark in shared:
+        first = remark["versions"][0]
+        rows = []
+        for v in remark["versions"]:
+            quote = trim(v["quote"], 320)
+            # mark what a longer version adds; a shorter one simply reads short
+            body = marked(quote, first["quote"]) if v["relation"] == "says more" else e(quote)
+            label = "" if v is first else (
+                f'<span class="vrel {QUOTE_RELATION[v["relation"]][1]}">'
+                f'{QUOTE_RELATION[v["relation"]][0]}</span>')
+            rows.append(f'<div class="ver"><span class="vsrc">{e(v["source"])}</span>'
+                        f'<div><blockquote>“{body}”</blockquote>{label}</div></div>')
+        out.append(f'<div class="remark"><div class="rhead"><b>{e(remark["speaker"] or "Unattributed")}</b>'
+                   f'<span>quoted by {remark["outlets"]} outlets</span></div>{"".join(rows)}</div>')
+    others = ""
+    if single:
+        items = "".join(
+            f'<li><b>{e(r["speaker"] or "Unattributed")}</b> &middot; {e(r["versions"][0]["source"])}'
+            f'<span>“{e(trim(r["versions"][0]["quote"], 220))}”</span></li>'
+            for r in single)
+        people = len({r["speaker"] for r in single if r["speaker"]})
+        others = (f'<details class="pdet"><summary><b>Other quotes</b><span>{len(single)} from '
+                  f'{people} people, each in one outlet</span></summary>'
+                  f'<ul class="qlist">{items}</ul></details>')
+    hint = ('<p class="hint">Where outlets quoted the same remark, their versions are side by '
+            'side. Highlighted words are the ones the first outlet did not print.</p>'
+            if shared else "")
+    return '<h3 class="sub">What was said</h3>' + hint + "".join(out) + others
+
+
 def _figure_row(row):
     tags = []
     if row.get("credited_to"):
@@ -407,8 +580,36 @@ def _figure_row(row):
     return (f'<div class="fig"><div class="fhead">'
             f'<span class="fnum">{e(row["figure"])}</span>'
             f'<span class="fsrc">{e(row["source"])}</span>{tagging}</div>'
-            f'<p class="fctx">{e(trim(row.get("context") or row["sentence"], 420))}'
-            f'{more}</p></div>')
+            f'<p class="fctx">{figure_in_context(row)}{more}</p></div>')
+
+
+def figure_in_context(row, limit=420):
+    """The context with the figure in bold, cut around the figure.
+
+    The excerpt used to be cut from its start, so a figure late in a long
+    passage could fall outside it, and the reader had to hunt for the number the
+    row is about. The figure's own sentence is searched first, so a number that
+    also appears in the sentence before is not the one marked.
+    """
+    text = " ".join((row.get("context") or row["sentence"] or "").split())
+    figure = " ".join((row.get("figure") or "").split())
+    sentence = " ".join((row.get("sentence") or "").split())
+    base = text.find(sentence) if sentence else -1
+    at = text.find(figure, max(base, 0)) if figure else -1
+    if at < 0 and figure:
+        at = text.find(figure)
+    if at < 0:
+        return e(trim(text, limit))
+    start = max(0, at - limit // 2)
+    end = min(len(text), max(start + limit, at + len(figure)))
+    if start > 0:
+        start = text.find(" ", start, at) + 1 or start
+    if end < len(text):
+        cut = text.rfind(" ", at + len(figure), end)
+        end = cut if cut > 0 else end
+    before, after = text[start:at], text[at + len(figure):end]
+    return ("…" if start > 0 else "") + e(before) + f"<strong>{e(figure)}</strong>" \
+        + e(after) + ("…" if end < len(text) else "")
 
 
 def figures_block(cluster):
@@ -534,7 +735,7 @@ def story_tile(cluster):
     groups = cluster["consensus"]
     total = len(groups) or 1
     # a fact every readable outlet carried, versus one some of them left out
-    shared = sum(1 for g in groups if not g.get("omitted_by"))
+    shared = sum(1 for g in groups if not g.get("omitted_by") and not g.get("related"))
     gaps = len(groups) - shared
     tiers = summarise(cluster.get("figure_digest") or [])
     coherence = cluster.get("coherence") or 0
@@ -570,7 +771,7 @@ def story_tile(cluster):
         f'<div class="badges">{"".join(badges)}</div></a>')
 
 
-def dashboard(clusters, generated, stats):
+def dashboard(clusters, generated, stats, people=None, selection=None):
     tiles = "".join(story_tile(c) for c in clusters)
 
     outlets = {}
@@ -589,10 +790,15 @@ def dashboard(clusters, generated, stats):
     unread = sorted({a["source"] for c in clusters for a in c["articles"]
                      if not a["fetched"]})
 
+    # a demonstration set is chosen for what it shows, and says so: contested
+    # stories are not a typical day's mix
+    chosen = ('These stories were chosen to show every comparison feature: contested '
+              'stories where outlets’ coverage differs, so they are not a typical '
+              'day’s mix. ' if selection == "showcase" else "")
     body = (
         '<div class="note"><b>Demonstration.</b> Every number and quotation below comes '
         f'from a real Newseye run over 12 Kenyan RSS feeds, {e(generated)}. '
-        'Nothing here is mock data.</div>'
+        f'{chosen}Nothing here is mock data.</div>'
 
         '<div class="stats">'
         + stat("Stories tracked", f'{stats["usable"]}',
@@ -617,10 +823,14 @@ def dashboard(clusters, generated, stats):
         'matches that. Press Enter to search every article.</div>'
         '</div><div>'
 
-        f'<div class="panel" id="outlets"><h4>Most present outlets</h4>'
+        + differ_panel(clusters)
+
+        + f'<div class="panel" id="outlets"><h4>Most present outlets</h4>'
         f'<div class="rank">{rank_rows}</div></div>'
 
-        '<div class="panel quiet" id="gaps"><h4>Why "not carried" is not "wrong"</h4>'
+        + people_panel(people)
+
+        + '<div class="panel quiet" id="gaps"><h4>Why "not carried" is not "wrong"</h4>'
         '<p>An outlet can leave a fact out because it judged it unimportant, because it '
         'ran a shorter piece, or because it filed earlier. None of those is an error.</p>'
         '<p>The gap is worth seeing anyway: it is the difference between the story you '
@@ -645,7 +855,7 @@ def dashboard(clusters, generated, stats):
                  search="filter")
 
 
-def story_page(cluster, generated):
+def story_page(cluster, generated, people_here=()):
     coherence = cluster.get("coherence") or 0
     sources = len({a["source"] for a in cluster["articles"]})
     loose = ""
@@ -666,11 +876,13 @@ def story_page(cluster, generated):
         + '</header>'
         + loose
         + '<h3 class="sub">The coverage</h3>' + headline_list(cluster)
+        + people_chips(people_here)
         + '<h3 class="sub">Who told you what</h3>'
         + '<p class="hint">Each row is a fact one outlet reported. A dash means that '
           'outlet did not carry it. A question mark means we could not read that '
           'outlet at all, so it is never counted as leaving anything out.</p>'
         + coverage_table(cluster)
+        + quotes_block(cluster)
         + framing_block(cluster)
         + '<h3 class="sub">The numbers each outlet gave</h3>'
         + '<p class="hint">Grouped where two or more outlets published the same kind of '
@@ -1001,6 +1213,414 @@ def corpus_stats(clusters):
     return stats
 
 
+# ---------------------------------------------------------------------------
+# People: how each outlet presents one public figure
+# ---------------------------------------------------------------------------
+# A person gets a page once this many articles name them, from at least two
+# outlets: below that there is nothing to set side by side.
+PEOPLE_MIN_ARTICLES = 6
+PEOPLE_MIN_OUTLETS = 2
+# outlets that named them less often than this are listed, not broken down
+PEOPLE_CARD_MIN = 3
+FEEDS = {feed["name"] for feed in RSS_FEEDS}
+ROLE_ORDER = (
+    ("speaks", "Speaking", "r-speaks", "quoted or reported speaking"),
+    ("acts", "Acting", "r-acts", "doing something"),
+    ("acted on", "Acted on", "r-acted", "something is done or said to them"),
+    ("spoken about", "In others' words", "r-about", "inside someone else's quoted words"),
+    ("described", "Described", "r-desc", "the sentence says what they are"),
+    ("mentioned", "Mentioned", "r-ment", "named in passing"),
+)
+ROLE_LABEL = {role: (label, cls) for role, label, cls, _ in ROLE_ORDER}
+# Facts about two of the feeds that a reader needs to read their counts:
+# covering government is their remit, not something these pages discovered.
+STATE_MEDIA = {"KBC": "state broadcaster", "Kenya News": "government news agency"}
+QUOTED = "quoted directly"
+IRREGULAR = {"have": "has", "be": "is", "do": "does", "go": "goes"}
+
+
+def people_data():
+    """How each outlet presents every listed person named often enough to compare.
+
+    Reads stored headlines and snippets only, so a paywalled outlet counts as
+    fully as a readable one. None without a database, like the search index.
+    """
+    try:
+        from backend.analysis.portrayal import corpus_context, portray
+        from backend.nlp.entities import load_nlp, people
+        nlp = load_nlp(lemmas=True)
+        context = corpus_context()
+        found = []
+        for ident, entry in people().items():
+            outlets, totals = portray(ident, nlp=nlp, context=context)
+            outlets = {o: s for o, s in outlets.items() if o in FEEDS}
+            articles = sum(s["articles"] for s in outlets.values())
+            if articles >= PEOPLE_MIN_ARTICLES and len(outlets) >= PEOPLE_MIN_OUTLETS:
+                found.append({"id": ident, "name": entry["name"],
+                              "aliases": entry.get("aliases", []), "outlets": outlets,
+                              "totals": {o: n for o, n in totals.items() if o in FEEDS},
+                              "articles": articles})
+    except Exception as exc:
+        print(f"  (people pages unavailable: {type(exc).__name__}: {exc})")
+        return None
+    found.sort(key=lambda p: -p["articles"])
+    return {"people": found, "first": context["first"], "last": context["last"]}
+
+
+def headline_tense(phrase):
+    """'urge' -> 'urges', 'hit back at' -> 'hits back at': the tense headlines use."""
+    if not phrase or phrase in (QUOTED, "according to"):
+        return phrase or ""
+    first, _, rest = phrase.partition(" ")
+    if first in IRREGULAR:
+        first = IRREGULAR[first]
+    elif first.endswith(("ss", "sh", "ch", "x", "z", "o")):
+        first += "es"
+    elif first.endswith("s"):
+        pass   # already inflected: the parser sometimes leaves "mobilizes" whole
+    elif first.endswith("y") and first[-2:-1] not in "aeiou":
+        first = first[:-1] + "ies"
+    else:
+        first += "s"
+    return f"{first} {rest}".strip()
+
+
+def done_to(key):
+    """Who did what to them, as a headline would put it: "Moses Kuria accuses"."""
+    verb, by = key
+    return f"{by} {headline_tense(verb)}" if by else f"{headline_tense(verb)} (no one named)"
+
+
+def counted(counter, show=str, limit=6):
+    return " &middot; ".join(f"{e(show(k))} <b>{v}</b>" if v > 1 else e(show(k))
+                             for k, v in counter.most_common(limit))
+
+
+def role_bar(roles, mentions):
+    total = mentions or 1
+    parts = "".join(f'<i class="{cls}" style="width:{roles[role] / total * 100:.1f}%"></i>'
+                    for role, _, cls, _ in ROLE_ORDER if roles.get(role))
+    words = ", ".join(f"{label.lower()} {roles[role] / total:.0%}"
+                      for role, label, _, _ in ROLE_ORDER if roles.get(role))
+    return f'<div class="roles" role="img" aria-label="{e(words)}">{parts}</div>'
+
+
+def role_key():
+    return ('<div class="rolekey">'
+            + "".join(f'<span><i class="{cls}"></i>{e(label)}</span>'
+                      for _, label, cls, _ in ROLE_ORDER)
+            + '</div>')
+
+
+def role_text(roles, mentions, limit=3):
+    total = mentions or 1
+    top = sorted(((roles[role], label) for role, label, _, _ in ROLE_ORDER if roles.get(role)),
+                 reverse=True)[:limit]
+    return " &middot; ".join(f"{e(label.lower())} {n / total:.0%}" for n, label in top)
+
+
+def outlet_label(outlet):
+    own = STATE_MEDIA.get(outlet)
+    return e(outlet) + (f"<small>{e(own)}</small>" if own else "")
+
+
+def day(stamp):
+    return f"{stamp.day} {stamp:%b}"
+
+
+def people_chips(people_here):
+    if not people_here:
+        return ""
+    chips = "".join(f'<a class="pchip" href="person-{e(ident)}.html">{e(name)}</a>'
+                    for ident, name in people_here)
+    return ('<h3 class="sub">People in this story</h3>'
+            '<p class="hint">How each outlet presents them across every story, not only '
+            'this one.</p>'
+            f'<div class="pchips">{chips}</div>')
+
+
+def differ_panel(clusters, limit=5):
+    """The stories where outlets' coverage differs most, each with its reasons.
+
+    Counts only differences a reader can check on the story page - related
+    wording, figures, reworded quotes, a wide tone gap - never a verdict about
+    which outlet is right. The reasons are shown so a story's place is never a
+    mystery, and stories with no checkable difference are left out.
+    """
+    from backend.analysis.divergence import differences
+
+    scored = [(differences(c), c) for c in clusters]
+    scored = sorted((t for t in scored if t[0]["score"]), key=lambda t: -t[0]["score"])[:limit]
+    if not scored:
+        return ""
+    rows = "".join(
+        f'<div class="r"><b>{i}</b><div><a href="story-{c["cluster_id"]}.html">'
+        f'<span>{e(trim(c.get("title_summary") or "Untitled story", 80))}</span></a>'
+        f'<small>{e(" · ".join(d["reasons"]))}</small></div></div>'
+        for i, (d, c) in enumerate(scored, start=1))
+    return ('<div class="panel"><h4>Where outlets differ most</h4>'
+            f'<div class="rank">{rows}</div>'
+            '<p class="more-note">Differences you can check on each story page. '
+            'Different is not wrong: read the versions side by side.</p></div>')
+
+
+def people_panel(people):
+    if not people or not people["people"]:
+        return ""
+    rows = "".join(
+        f'<div class="r"><b>{i}</b><div><a href="person-{e(p["id"])}.html">'
+        f'<span>{e(p["name"])}</span></a>'
+        f'<small>{p["articles"]} articles &middot; {len(p["outlets"])} outlets</small></div></div>'
+        for i, p in enumerate(people["people"][:6], start=1))
+    return ('<div class="panel"><h4>People in the news</h4>'
+            f'<div class="rank">{rows}</div>'
+            '<a class="more" href="people.html">How each outlet presents them &rarr;</a></div>')
+
+
+def person_headlines(records, limit=6):
+    """A few headlines behind the counts: one per role first, then the newest."""
+    picked, seen = [], set()
+    ordered = sorted(records, key=lambda r: (r["field"] != "headline", -r["date"].timestamp()))
+
+    def take(record):
+        if record["url"] not in seen and len(picked) < limit:
+            seen.add(record["url"])
+            picked.append(record)
+
+    for role, *_ in ROLE_ORDER:
+        first = next((r for r in ordered if r["role"] == role and r["url"] not in seen), None)
+        if first:
+            take(first)
+    for record in ordered:
+        take(record)
+    items = []
+    for r in sorted(picked, key=lambda r: r["date"], reverse=True):
+        label, cls = ROLE_LABEL[r["role"]]
+        where = " &middot; opening line" if r["field"] == "snippet" else ""
+        items.append(
+            f'<li><div><span class="role {cls}">{e(label)}</span>'
+            f'<small>{e(day(r["date"]))}{where}</small></div>'
+            f'<a href="{e(r["url"])}" target="_blank" rel="noopener noreferrer">'
+            f'{e(r["headline"])}</a></li>')
+    return "".join(items)
+
+
+def top_role(s):
+    """The part an outlet most often gives them, with its share of mentions."""
+    role, n = max(s["roles"].items(), key=lambda kv: kv[1])
+    return role, n / (s["mentions"] or 1)
+
+
+# What each group of reporting verbs conveys, in a reader's words
+VERB_TONE = {"said": "neutral", "claimed": "distancing", "promised or assured": "promising",
+             "praised": "praising", "criticised": "critical",
+             "denied or defended": "defensive", "urged or warned": "urging"}
+ROLE_PHRASE = {"speaks": "Mostly quoted speaking", "acts": "Mostly shown doing something",
+               "acted on": "Mostly on the receiving end",
+               "spoken about": "Mostly talked about by others",
+               "described": "Mostly described", "mentioned": "Mostly named in passing"}
+
+
+def words_used(s, limit=4):
+    """The verbs an outlet reports their words with, grouped by what the verb
+    conveys: "neutral: says, explains · critical: accuses". The verbs of what
+    they do when the outlet never quotes them."""
+    if not s["speaking_verbs"]:
+        doing = ", ".join(e(headline_tense(v)) for v, _ in s["acting_verbs"].most_common(3))
+        return f'<span class="vt">actions:</span> {doing}' if doing else ""
+    from backend.analysis.portrayal import family_of
+    groups = {}
+    for verb, _ in s["speaking_verbs"].most_common(limit):
+        tone = VERB_TONE.get(family_of(verb), "other")
+        groups.setdefault(tone, []).append(headline_tense(verb))
+    return " &middot; ".join(f'<span class="vt">{e(t)}:</span> {e(", ".join(v))}'
+                             for t, v in groups.items())
+
+
+def tone_cell(s):
+    tone = s.get("tone")
+    if not tone:
+        return '<span class="few">too few headlines</span>'
+    return (f'{e(tone["label"])}<small>{tone["n"]} headlines and opening lines</small>')
+
+
+def anchor(outlet):
+    return "o-" + re.sub(r"[^a-z0-9]+", "-", outlet.lower()).strip("-")
+
+
+def usual_title(s):
+    titles = [t for t, _ in s["titles"].most_common() if t != "(no title)"]
+    return s["title_forms"].get(titles[0], titles[0]) if titles else ""
+
+
+def glance_facts(named, absent):
+    """Up to three plain sentences a reader can take in at once. Facts, not findings."""
+    facts = []
+    shares = [(s["articles"] / s["outlet_articles"], o, s) for o, s in named if s["outlet_articles"]]
+    if shares:
+        _, outlet, s = max(shares)
+        facts.append(f"Named most often by <b>{e(outlet)}</b>: {s['articles']} of its "
+                     f"{s['outlet_articles']:,} articles.")
+    if absent:
+        names = [o for o, _ in absent]
+        shown = names if len(names) <= 4 else names[:3]
+        listed = ", ".join(f"<b>{e(n)}</b>" for n in shown)
+        more = f" and {len(names) - len(shown)} more" if len(names) > len(shown) else ""
+        facts.append(f"Never named by {listed}{more}.")
+    speaking = [(s["roles"].get("speaks", 0) / s["mentions"], o) for o, s in named
+                if s["articles"] >= PEOPLE_CARD_MIN and s["mentions"]]
+    if len(speaking) >= 2:
+        high, low = max(speaking), min(speaking)
+        if high[0] - low[0] >= 0.15:
+            facts.append(f"Shown speaking most in <b>{e(high[1])}</b> ({high[0]:.0%} of "
+                         f"mentions), least in <b>{e(low[1])}</b> ({low[0]:.0%}).")
+    return facts
+
+
+def glance_table(named, absent):
+    """One row per outlet: how often, how they appear, the verbs, the title, the tone."""
+    share = {o: s["articles"] / s["outlet_articles"] for o, s in named if s["outlet_articles"]}
+    top = max(share.values(), default=0) or 1
+    rows = []
+    for outlet, s in named:
+        cover = (f'<div class="meter"><i style="width:{share.get(outlet, 0) / top * 100:.0f}%">'
+                 f'</i></div><small>{s["articles"]} &middot; {share.get(outlet, 0):.1%} of its '
+                 f'articles</small>')
+        name = outlet_label(outlet)
+        if s["articles"] < PEOPLE_CARD_MIN:
+            rest = '<td colspan="4" class="few">Too few articles to compare</td>'
+        else:
+            name = f'<a href="#{anchor(outlet)}">{name}</a>'
+            role, part = top_role(s)
+            rest = (f'<td>{e(ROLE_PHRASE[role])}<small>{part:.0%} of mentions</small></td>'
+                    f'<td>{words_used(s) or "&mdash;"}</td>'
+                    f'<td>{e(usual_title(s)) or "&mdash;"}</td>'
+                    f'<td>{tone_cell(s)}</td>')
+        rows.append(f'<tr><td class="o">{name}</td><td class="cov">{cover}</td>{rest}</tr>')
+    for outlet, n in absent:
+        rows.append(f'<tr class="none"><td class="o">{outlet_label(outlet)}</td>'
+                    f'<td colspan="5">Never named in its {n:,} articles</td></tr>')
+    return ('<div class="scroll"><table class="glance"><thead><tr><th>Outlet</th>'
+            '<th>How often</th><th>How they appear</th><th>Verbs for what they said</th>'
+            '<th>Called</th><th>Headline tone</th>'
+            f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>')
+
+
+def outlet_card(outlet, s):
+    """The evidence for one outlet, folded until the reader asks for it."""
+    facts = []
+    if s["roles"].get("speaks"):
+        verbs = counted(s["speaking_verbs"], headline_tense)
+        facts.append(("When they speak", counted(s["speaking_families"])
+                      + (f'<span class="verbs">{verbs}</span>' if verbs else "")))
+    if s["acting_verbs"]:
+        facts.append(("What they do", counted(s["acting_verbs"], headline_tense)))
+    if s["acted_on"]:
+        facts.append(("What others do to them", counted(s["acted_on"], done_to)))
+    if s["spoken_about_by"]:
+        facts.append(("Quoted about them", counted(s["spoken_about_by"])))
+    facts.append(("What they are called",
+                  counted(s["titles"], lambda t: s["title_forms"].get(t, t))))
+    if s.get("tone"):
+        t = s["tone"]
+        facts.append(("Headline tone", f'{e(t["label"])}: {t["negative"]:.0%} read negative, '
+                                       f'{t["positive"]:.0%} positive, of {t["n"]}'))
+    rows = "".join(f"<dt>{e(label)}</dt><dd>{value}</dd>" for label, value in facts)
+    role, _ = top_role(s)
+    plural = "s" if s["articles"] != 1 else ""
+    return (f'<details class="pdet" id="{anchor(outlet)}"><summary><b>{e(outlet)}</b>'
+            f'<span>{s["articles"]} article{plural} &middot; '
+            f'{e(ROLE_PHRASE[role].lower())}</span></summary>'
+            f'<div class="pbody">{role_bar(s["roles"], s["mentions"])}'
+            f'<dl class="pfacts">{rows}</dl>'
+            '<p class="go">Open a headline to read the full article on '
+            f'{e(outlet)}\u2019s site.</p>'
+            f'<ul class="heads ph">{person_headlines(s["records"])}</ul></div></details>')
+
+
+# A row's outlet name links to that outlet's folded headlines; open it on arrival
+OPEN_TARGET = (
+    "<script>(function(){function open(){var d=document.getElementById("
+    "location.hash.slice(1));if(d&&d.tagName==='DETAILS'){d.open=true;}}"
+    "window.addEventListener('hashchange',open);open();})();</script>")
+
+
+def method_body(aliases):
+    roles = "".join(f"<li><b>{e(label)}</b>: {e(meaning)}</li>"
+                    for _, label, _, meaning in ROLE_ORDER)
+    matched = f"<p>Also matched as: {e(aliases)}.</p>" if aliases else ""
+    return (
+        f'<ul class="plain">{roles}</ul>{matched}'
+        '<p>Read from headlines and opening lines, which every outlet publishes in full '
+        'even when the article itself is paywalled.</p>'
+        '<p>KBC is the state broadcaster and Kenya News the government\u2019s own news '
+        'agency: covering government activity is their remit.</p>'
+        '<p>On a hand-checked sample of 40 headline mentions the role was right 34 '
+        'times. A different person with the same name can be counted under the '
+        'better-known one.</p>'
+        '<p>Headline tone comes from a sentiment model trained on social media posts, '
+        'scoring each sentence from negative to positive. It reads the sentence, not '
+        'the outlet\u2019s view of the person, and it misreads sarcasm and Swahili.</p>'
+        '<p>Nothing here rates an outlet or a person. The conclusion is yours.</p>')
+
+
+def person_page(person, people, generated):
+    outlets, totals = person["outlets"], person["totals"]
+    named = sorted(outlets.items(), key=lambda kv: -kv[1]["articles"])
+    absent = sorted(((o, n) for o, n in totals.items() if o not in outlets),
+                    key=lambda kv: -kv[1])
+    facts = "".join(f"<li>{fact}</li>" for fact in glance_facts(named, absent))
+    period = f'{day(people["first"])} to {day(people["last"])} {people["last"]:%Y}'
+    detailed = "".join(outlet_card(o, s) for o, s in named if s["articles"] >= PEOPLE_CARD_MIN)
+    body = (
+        f'<a class="back" href="people.html">{ICON["arrow"]}All people</a>'
+        '<div class="sheet"><header>'
+        f'<h1>{e(person["name"])}</h1>'
+        f'<p class="lede">Named in {person["articles"]} articles by {len(named)} of '
+        f'{len(FEEDS)} outlets &middot; {period}</p>'
+        '</header>'
+        + (f'<ul class="facts">{facts}</ul>' if facts else "")
+        + '<h3 class="sub">Outlet by outlet</h3>'
+        + glance_table(named, absent)
+        + '<p class="hint">Counts reflect which stories each outlet covered, as well as how '
+          'it wrote them. <b>Headline tone</b> is an automatic reading of each headline or '
+          'opening line as a whole: \u201cRuto condemns the killings\u201d reads negative '
+          'without being negative about Ruto. It is a hint, not a verdict, and it can be '
+          'wrong. These pages point to the reporting; they do not replace it.</p>'
+        + '<h3 class="sub">Read the coverage yourself</h3>'
+        + role_key()
+        + detailed
+        + OPEN_TARGET
+        + '<details class="pdet method"><summary><b>How this works</b></summary>'
+          f'<div class="pbody">{method_body(", ".join(person["aliases"]))}</div></details>'
+        + '</div>'
+    )
+    return shell(person["name"], "People", body, generated)
+
+
+def people_index(people, generated):
+    tiles = []
+    for p in people["people"]:
+        absent = sorted((o for o in p["totals"] if o not in p["outlets"]),
+                        key=lambda o: -p["totals"][o])
+        if absent:
+            more = f" and {len(absent) - 2} more" if len(absent) > 2 else ""
+            missing = f'<div class="srcline">Never named by {e(", ".join(absent[:2]))}{more}</div>'
+        else:
+            missing = '<div class="srcline">Named by every outlet</div>'
+        tiles.append(
+            f'<a class="tile" href="person-{e(p["id"])}.html"><h3>{e(p["name"])}</h3>'
+            f'<div class="srcline">{p["articles"]} articles &middot; '
+            f'{len(p["outlets"])} of {len(FEEDS)} outlets</div>{missing}</a>')
+    body = (
+        '<div class="colhead"><h2>People in the news</h2>'
+        f'<span class="hint">{len(people["people"])} people &middot; '
+        f'{day(people["first"])} to {day(people["last"])} {people["last"]:%Y}</span></div>'
+        '<p class="hint">Pick a person to see how each outlet covers them, side by side.</p>'
+        + f'<div class="grid">{"".join(tiles)}</div>')
+    return shell("People - Newseye", "People", body, generated)
+
+
 def build(export_path, out_dir):
     with open(export_path, encoding="utf-8") as fh:
         data = json.load(fh)
@@ -1019,21 +1639,42 @@ def build(export_path, out_dir):
     # browser tab holds a lock on it and rmtree fails with access denied
     os.makedirs(out_dir, exist_ok=True)
     for stale in os.listdir(out_dir):
-        if stale.startswith("story-") and stale.endswith(".html"):
+        if stale.startswith(("story-", "person-")) and stale.endswith(".html"):
             try:
                 os.remove(os.path.join(out_dir, stale))
             except OSError:
                 pass
 
     stats = corpus_stats(clusters)
+    people = people_data()
+    # which listed people each article names, as the parse decided - so a story
+    # set in Uhuru Park does not link to Uhuru Kenyatta
+    named_in = defaultdict(set)
+    names = {}
+    for person in (people or {}).get("people", []):
+        names[person["id"]] = person["name"]
+        for summary in person["outlets"].values():
+            for record in summary["records"]:
+                named_in[record["url"]].add(person["id"])
+
     with open(os.path.join(out_dir, "index.html"), "w", encoding="utf-8") as fh:
-        fh.write(dashboard(clusters, generated, stats))
+        fh.write(dashboard(clusters, generated, stats, people, data.get("selection")))
     for cluster in clusters:
+        here = {i for a in cluster["articles"] for i in named_in.get(a.get("url"), ())}
         path = os.path.join(out_dir, f"story-{cluster['cluster_id']}.html")
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write(story_page(cluster, generated))
+            fh.write(story_page(cluster, generated,
+                                sorted(((i, names[i]) for i in here), key=lambda p: p[1])))
     with open(os.path.join(out_dir, "search.html"), "w", encoding="utf-8") as fh:
         fh.write(search_page(generated))
+    if people:
+        with open(os.path.join(out_dir, "people.html"), "w", encoding="utf-8") as fh:
+            fh.write(people_index(people, generated))
+        for person in people["people"]:
+            path = os.path.join(out_dir, f"person-{person['id']}.html")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(person_page(person, people, generated))
+        print(f"  people: {len(people['people'])} pages")
 
     # a script rather than JSON: browsers refuse fetch() on file:// pages, but
     # load a <script src> from beside the page without complaint

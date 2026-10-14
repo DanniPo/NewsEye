@@ -20,6 +20,7 @@ from backend.analysis.claims import extract_claims
 from backend.analysis.consensus import analyze_cluster_claims
 from backend.analysis.digest import build_digest, summarise
 from backend.analysis.framing import analyze_framing
+from backend.analysis.quotes import align_quotes, extract_quotes
 from backend.analysis.story import representative_title
 from backend.analysis.subject import derive_subject
 from backend.config import (
@@ -93,14 +94,15 @@ def save_analysis(cluster_id, result, sources_used):
         cur.execute("""
             INSERT INTO cluster_analysis
                 (cluster_id, consensus, subject,
-                 framing, figure_digest, sources_used,
+                 framing, figure_digest, quotes, sources_used,
                  summary_model, sentiment_model, analyzed_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, now())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, now())
             ON CONFLICT (cluster_id) DO UPDATE SET
                 consensus = EXCLUDED.consensus,
                 subject = EXCLUDED.subject,
                 framing = EXCLUDED.framing,
                 figure_digest = EXCLUDED.figure_digest,
+                quotes = EXCLUDED.quotes,
                 sources_used = EXCLUDED.sources_used,
                 summary_model = EXCLUDED.summary_model,
                 sentiment_model = EXCLUDED.sentiment_model,
@@ -111,6 +113,7 @@ def save_analysis(cluster_id, result, sources_used):
               json.dumps(result["consensus"], default=str), result["subject"],
               json.dumps(result.get("framing") or [], default=str),
               json.dumps(result.get("figure_digest") or [], default=str),
+              json.dumps(result.get("quotes") or [], default=str),
               sources_used, TITLE_SUMMARY_MODEL, SENTIMENT_MODEL))
 
 def analyze_cluster(cluster_id, refresh=False):
@@ -194,11 +197,25 @@ def _run_deep_analysis(cluster_id):
     timings["framing"] = time.time() - mark
     print(f"  {len(framing)} entities named by 2+ sources")
 
+    print("Finding who was quoted, and how each outlet quoted them...")
+    mark = time.time()
+    quoted = []
+    for article, body in zip(articles, bodies, strict=True):
+        for quote in extract_quotes(body):
+            quote.update(source=article["source_name"], article_id=article["id"],
+                         url=article["url"])
+            quoted.append(quote)
+    remarks = align_quotes(quoted)
+    timings["quotes"] = time.time() - mark
+    print(f"  {len(quoted)} quotes, {sum(1 for r in remarks if r['outlets'] > 1)} "
+          f"remarks quoted by 2+ outlets")
+
     subject = derive_subject([article["title"] for article in articles])
     print(f"Subject: {subject}")
 
     result = {"title_summary": title_summary, "consensus": groups,
               "subject": subject, "framing": framing, "figure_digest": digest,
+              "quotes": remarks,
               # Not stored: which articles could be read exists only for this
               # run, since the text itself is discarded. The static site needs
               # it to mark outlets "could not read" rather than as omitting.

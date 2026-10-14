@@ -272,6 +272,18 @@ python -m backend.scripts.build_site
 `--note showcase` makes the dashboard say the stories were chosen this way, so
 a curated set is never mistaken for a typical day.
 
+To send the site to someone, fold it into one HTML file (about 5.5 MB with
+the search index):
+
+```bash
+python -m backend.scripts.single_file --site site --out dist/newseye.html
+```
+
+Every page becomes a section of that file and links between pages keep
+working, so it opens from an email attachment or a phone's downloads with no
+server. It needs a connection only for fonts, the original articles, and the
+meaning-based search model (search falls back to matching words without it).
+
 ## Known limitations
 
 - **Access is the binding constraint.** Around 30% of articles in a story cannot
