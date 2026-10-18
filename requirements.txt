@@ -23,5 +23,10 @@ hdbscan==0.8.44
 numpy==2.5.3
 scikit-learn==1.9.0
 
-# only used by backend/scripts/visualize_clusters.py
+# figures only: visualize_clusters, evaluation, and the framing benchmark chart
 matplotlib==3.11.1
+
+# NewsMTSC (targeted sentiment) is NOT installed here: it needs Python <= 3.11,
+# torch < 2.1 and transformers <= 4.24, so it runs in its own environment as a
+# worker. eval/framing/README.md sets it up; without it, framing falls back to
+# sentence tone.

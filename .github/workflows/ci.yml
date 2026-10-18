@@ -58,6 +58,10 @@ jobs:
           import backend.nlp.entities, backend.nlp.truecase, backend.analysis.portrayal
           import backend.nlp.nli, backend.analysis.quotes, backend.analysis.divergence
           import backend.scripts.pick_showcase, backend.scripts.single_file
+          import backend.scripts.end_to_end, backend.scripts.test_record
+          import backend.scripts.evaluation, backend.scripts.heldout
+          import backend.analysis.targeted, backend.eval.benchmark_framing
+          import backend.eval.sample_framing, backend.eval.score_framing
           print('all pipeline modules import')
           "
 
@@ -84,6 +88,12 @@ jobs:
 
       - name: Where outlets differ - only checkable differences count
         run: python -m backend.scripts.test_divergence
+
+      - name: Edges - thresholds, failures, hostile feed content, empty input
+        run: python -m backend.scripts.test_robustness
+
+      - name: Targeted tone - safe fallback, evaluation arithmetic
+        run: python -m backend.scripts.test_targeted
 
   schema:
     # Proves the repository can build its own database from nothing. The base

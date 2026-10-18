@@ -14,6 +14,7 @@ import sys
 from backend.analysis.portrayal import CURLY_POSSESSIVE, mentions
 from backend.nlp.entities import load_nlp
 from backend.nlp.truecase import build_casing_lexicon, truecase
+from backend.scripts.testkit import case, fields, report
 
 # (text, person, expected fields of their first mention)
 CASES = [
@@ -70,37 +71,29 @@ def first_mention(nlp, text, person):
     return found[0] if found else None
 
 
-def check(text, got, wanted):
+def check(text, person, got, wanted):
+    """The case record for one mention against the fields it must have."""
     if got is None:
-        return False, "not found"
-    wrong = {k: got.get(k) for k, v in wanted.items() if got.get(k) != v}
-    return not wrong, f"got {wrong}" if wrong else ""
+        return case(text, f"{person}: {fields(wanted)}", f"{person}: not found", False)
+    actual = {key: got.get(key) for key in wanted}
+    return case(text, f"{person}: {fields(wanted)}", f"{person}: {fields(actual)}",
+                actual == wanted)
 
 
-def run():
+def results():
     nlp = load_nlp(lemmas=True)
     lexicon = build_casing_lexicon(LEXICON_SOURCE, min_count=1)
-    passed = total = 0
-    for text, person, wanted in CASES:
-        ok, why = check(text, first_mention(nlp, text, person), wanted)
-        passed += ok
-        total += 1
-        print(f"  {'PASS' if ok else 'FAIL'}  {text[:66]:<66} {why}")
+    rows = [check(text, person, first_mention(nlp, text, person), wanted)
+            for text, person, wanted in CASES]
     for text, person in NOT_SPEAKING:
         got = first_mention(nlp, text, person)
-        ok = got is not None and got["role"] != "speaks"
-        passed += ok
-        total += 1
-        print(f"  {'PASS' if ok else 'FAIL'}  {text[:66]:<66} {'' if ok else got}")
-    for text, person, wanted in TITLE_CASE:
-        ok, why = check(text, first_mention(nlp, truecase(text, lexicon), person), wanted)
-        passed += ok
-        total += 1
-        print(f"  {'PASS' if ok else 'FAIL'}  {text[:66]:<66} {why}")
-    return passed, total
+        role = got["role"] if got else "not found"
+        rows.append(case(text, f"{person}: any role but speaks", f"{person}: role {role}",
+                         got is not None and role != "speaks"))
+    rows += [check(text, person, first_mention(nlp, truecase(text, lexicon), person), wanted)
+             for text, person, wanted in TITLE_CASE]
+    return rows
 
 
 if __name__ == "__main__":
-    passed, total = run()
-    print(f"\n{passed}/{total} portrayal cases")
-    sys.exit(0 if passed == total else 1)
+    sys.exit(report(results(), "portrayal cases"))

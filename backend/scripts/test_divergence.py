@@ -9,6 +9,7 @@ from somebody, so counting omissions would rank every story the same.
 import sys
 
 from backend.analysis.divergence import differences
+from backend.scripts.testkit import case, fields, report
 
 
 def fact(reported, omitted=(), related=()):
@@ -49,13 +50,14 @@ CASES = [
 ]
 
 
-if __name__ == "__main__":
-    passed = 0
+def results():
+    rows = []
     for name, analysis, wanted in CASES:
         got = differences(analysis)
-        wrong = {k: got[k] for k, v in wanted.items() if got[k] != v}
-        ok = not wrong
-        passed += ok
-        print(f"  {'PASS' if ok else 'FAIL'}  {name}{'' if ok else f'  got {wrong}'}")
-    print(f"\n{passed}/{len(CASES)} divergence cases")
-    sys.exit(0 if passed == len(CASES) else 1)
+        actual = {key: got[key] for key in wanted}
+        rows.append(case(name, fields(wanted), fields(actual), actual == wanted))
+    return rows
+
+
+if __name__ == "__main__":
+    sys.exit(report(results(), "divergence cases"))

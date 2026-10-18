@@ -9,6 +9,7 @@ two different remarks that must not be lined up as one.
 import sys
 
 from backend.analysis.quotes import align_quotes, extract_quotes
+from backend.scripts.testkit import case, fields, report
 
 # (text, expected fields of the first quote found; None means no quote at all)
 EXTRACT = [
@@ -98,38 +99,37 @@ ALIGN = [
 ]
 
 
-def run():
-    passed = total = 0
+def relations(lined):
+    """{source: relation} in words."""
+    return ", ".join(f"{source}: {rel}" for source, rel in lined.items()) or "nothing lined up"
+
+
+def results():
+    rows = []
     for text, wanted in EXTRACT:
         found = extract_quotes(text)
         if wanted is None:
-            ok, detail = not found, f"got {found}"
-        else:
-            got = found[0] if found else {}
-            wrong = {k: got.get(k) for k, v in wanted.items() if got.get(k) != v}
-            ok, detail = bool(found) and not wrong, f"got {wrong or 'no quote'}"
-        passed += ok
-        total += 1
-        print(f"  {'PASS' if ok else 'FAIL'}  {text[:70]:<70} {'' if ok else detail}")
+            actual = f"quote found: {found[0]['quote'][:60]}" if found else "no quote"
+            rows.append(case(text, "no quote", actual, not found))
+            continue
+        got = {key: found[0].get(key) for key in wanted} if found else None
+        rows.append(case(text, fields(wanted), fields(got) if found else "no quote",
+                         got == wanted))
     found = extract_quotes(CONTINUED)
     second = found[1] if len(found) > 1 else {}
-    ok = second.get("speaker") == "Kipchumba Murkomen" and second.get("how") == "continued"
-    passed += ok
-    total += 1
-    print(f"  {'PASS' if ok else 'FAIL'}  {'an unattributed quote continues the last speaker':<70} "
-          f"{'' if ok else f'got {second}'}")
+    wanted = {"speaker": "Kipchumba Murkomen", "how": "continued"}
+    got = {key: second.get(key) for key in wanted}
+    rows.append(case("an unattributed quote continues the last speaker",
+                     f"second quote: {fields(wanted)}",
+                     f"second quote: {fields(got)}" if second else "no second quote",
+                     got == wanted))
     for name, quotes, wanted in ALIGN:
         remarks = align_quotes(quotes)
         lined = {v["source"]: v["relation"] for r in remarks for v in r["versions"]
                  if v["relation"] != "first"}
-        ok = lined == wanted
-        passed += ok
-        total += 1
-        print(f"  {'PASS' if ok else 'FAIL'}  {name:<70} {'' if ok else f'got {lined}'}")
-    return passed, total
+        rows.append(case(name, relations(wanted), relations(lined), lined == wanted))
+    return rows
 
 
 if __name__ == "__main__":
-    passed, total = run()
-    print(f"\n{passed}/{total} quote cases")
-    sys.exit(0 if passed == total else 1)
+    sys.exit(report(results(), "quote cases"))

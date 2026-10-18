@@ -60,7 +60,7 @@ Two tiers, because the costs are wildly different.
 
 **Passive tier** — unattended, one ordered command. Polls RSS, embeds and
 classifies, and re-clusters when the corpus has moved enough to be worth it.
-Runs in ~80–170s on a 1,500-article window.
+A median run takes 131 s on a window of about 2,100 articles.
 
 ```
 Task Scheduler → pythonw.exe -m backend.passive --log logs\passive.log
@@ -88,7 +88,8 @@ python -m backend.active --min-sources 3
    quotes    who was quoted saying what; each outlet's version of a remark
              side by side: same words, shorter, longer, or worded differently
    figures   read every number, label it, show it with its source and context
-   framing   sentiment scoped to sentences naming one entity, per outlet
+   framing   each outlet's attitude toward each named person (NewsMTSC), and
+             the tone of sentences naming institutions and places
 ```
 
 Quote speakers are found from the reporting verb ("Ethekon said"), a pronoun
@@ -104,17 +105,36 @@ schema and connection.
 
 ## Models
 
-Four models, each doing one job. Every one is named explicitly in
+Five models, each doing one job. Every one is named explicitly in
 `backend/config.py`, so none of them is ever a library default.
 
 | Model | Size | Used in | Role |
 |---|---|---|---|
 | `all-MiniLM-L6-v2` (sentence-transformers) | 92 MB | `nlp/embeddings.py` | Embeds every article for clustering and search; groups claims into facts for the coverage table; picks each story's representative headline; orders figures within a group |
 | `deberta-v3-base-zeroshot-v1.1-all-33` | 380 MB | `nlp/classification.py`, `nlp/nli.py` | Gives each article a topic label at ingest; in the active tier, checks whether two sentences or two quotes say the same thing (NLI, both directions) |
-| `twitter-roberta-base-sentiment-latest` | 1 GB | `analysis/framing.py` | Scores the sentences that name a person or institution, averaged per outlet |
+| GRU-TSC from NewsSentiment 1.2.28 (NewsMTSC) | 584 MB | `analysis/targeted.py`, `analysis/tsc_worker.py` | Scores the writer's attitude toward each named person, per outlet, on story pages and in the people pages' headline tone |
+| `twitter-roberta-base-sentiment-latest` | 1 GB | `analysis/framing.py` | Tone of whole sentences: for institutions and places, and wherever the targeted model cannot score a mention |
 | spaCy `en_core_web_sm` | 15 MB | `nlp/entities.py` | Splits articles into sentences and tags names, places and quantities; also used to name each story's subject and to read who does what in a headline |
 
 HDBSCAN does the clustering, but it is an algorithm rather than a trained model.
+
+### How people are framed
+
+Sentence tone reads "Ruto condemns the killings in Kisumu" as negative (−0.47)
+although nothing in it is negative about Ruto. Targeted sentiment scores the
+writer's attitude toward the marked person instead (+0.07, neutral). On
+NewsMTSC's human-labelled test sets it beat sentence tone by +0.150 macro F1
+(803 targets, 95% CI +0.113 to +0.189) and +0.199 (1,034 targets in sentences
+naming two or more people, +0.167 to +0.232), passing a decision rule fixed
+before the run; combining the two models added nothing beyond noise. See
+`eval/framing/benchmark.md`.
+
+NewsSentiment needs Python ≤ 3.11, torch < 2.1 and transformers ≤ 4.24, so it
+runs as a worker in its own environment (`eval/framing/README.md` sets it up).
+Scores are cached, so each mention is scored once (0.26 s each on the T500
+GPU). Without the worker, everything falls back to sentence tone. The labelled
+Kenyan sample in `eval/framing/` is the test that confirms the switch on Kenyan
+text, or reverts it (`FRAMING_SENTIMENT=sentence`).
 
 ### Kenyan names
 
@@ -127,7 +147,9 @@ in 36 of 40. Two additions in `nlp/entities.py` correct it after it runs:
   47 counties and main towns, each person with an id so "Riggy G", "Gachagua"
   and "Rigathi Gachagua" are one person. Ambiguous names are tagged but never
   resolved: "Odinga" is Raila, Winnie or Oburu, and "Lusaka" is left out
-  because it is also Zambia's capital. Listed names: 26% → 98% in headlines.
+  because it is also Zambia's capital. Listed names: 26% → 98% of 522 headline
+  mentions. That is in-sample: the list was built from the same corpus. The
+  held-out evaluation in `docs/` measures it on headlines ingested later.
 - **A title rule** for names nobody listed: the capitalised words after "CS",
   "MP", "Governor", "Senator" and similar. Unlisted names after a title:
   82% → 93%.
@@ -239,15 +261,33 @@ ruff check backend                          # 0 findings
 python -m backend.scripts.test_casualties   # 15/15
 python -m backend.scripts.test_figures      # 14/14 + 1 documented limitation
 python -m backend.scripts.test_cluster_ids  # 10/10
-python -m backend.scripts.test_entities     # 21/21
+python -m backend.scripts.test_entities     # 22/22 (21 sentences + the list itself)
 python -m backend.scripts.test_portrayal    # 18/18
 python -m backend.scripts.test_coverage     # 6/6
 python -m backend.scripts.test_quotes       # 21/21
 python -m backend.scripts.test_divergence   # 6/6
+python -m backend.scripts.test_robustness   # 16/16 boundary, exception, security, empty input
+python -m backend.scripts.test_targeted     # 17/17 targeted tone: fallbacks, cache, eval maths
 ```
 
 All of these run on every push via `.github/workflows/ci.yml`, along with a job that
 builds the schema from an empty pgvector database and asserts the result.
+
+These commands keep a dated record in `docs/evidence/`:
+
+```bash
+python -m backend.scripts.test_record     # every suite: test ID, requirement, expected vs actual
+python -m backend.scripts.end_to_end      # feeds -> database -> clusters -> analysis -> site,
+                                          # checking each hand-off; site goes to dist/latest/
+python -m backend.scripts.evaluation      # intervals, repeated-run performance, figures
+python -m backend.scripts.heldout sample  # labelling sheets from data the code never saw
+python -m backend.scripts.heldout score   # ...and their accuracy once labelled
+```
+
+`docs/testing-and-evaluation.md` brings these together: the test strategy, the
+requirement traceability, the defect log (expected, actual, correction and
+retest) and the evaluation. `docs/usability-test-plan.md` is the user test
+protocol.
 
 The two figure tests assert on the shipping figure digest. They were rewritten after the
 adjudicator was removed, and immediately caught a real bug: the digest was
@@ -294,11 +334,10 @@ meaning-based search model (search falls back to matching words without it).
   but it is only meaningful when the cluster really is one story. Coherence
   measures topical tightness, not event identity, so blackout notices and an
   earnings report for the same utility can score 0.685 and still be a grab-bag.
-- **Model loading dominates runtime** — about 71% of a passive run is spent
-  importing torch to do ~36s of work. A long-lived worker would fix it.
-
-## Onedrive move
-- Project was initially on Onedrive which increased the load times of the project overall so
-  benchmark numbers shall be updated accordingly.
+- **Model loading is the largest share of a run** — 54 s of a median 131 s
+  passive run, over 93 runs since the 30 Sep optimisation. Every run over the
+  5-minute limit was waiting on disk or on the feeds, not computing
+  (`docs/evidence/evaluation-2026-10-15.md`). A long-lived worker would remove
+  most of it.
 
 Final-year project, Strathmore University.

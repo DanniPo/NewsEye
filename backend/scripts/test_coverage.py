@@ -15,6 +15,7 @@ related, never omitted - a false omission is the worst error this table can make
 import sys
 
 from backend.analysis.consensus import analyze_cluster_claims
+from backend.scripts.testkit import case, report
 
 EBOLA_KBC = ("Health Cabinet Secretary Aden Duale, speaking to the press Tuesday on Ebola "
              "preparedness in Nairobi, said the patient was a Kenyan citizen living in the "
@@ -71,20 +72,15 @@ def state_of(row, outlet):
     return "neither"
 
 
-def run():
-    passed = 0
+def results():
+    found = []
     for name, said, readable, unread, outlet, wanted in CASES:
         claims = [{"text": text, "source": source} for source, text in said]
         rows = analyze_cluster_claims(claims, all_sources=readable, unread_sources=unread)
         got = state_of(rows[0], outlet) if rows else "not grouped"
-        ok = got == wanted
-        passed += ok
-        detail = "" if ok else f"  expected {wanted}, got {got}"
-        print(f"  {'PASS' if ok else 'FAIL'}  {name}{detail}")
-    return passed
+        found.append(case(name, f"{outlet}: {wanted}", f"{outlet}: {got}", got == wanted))
+    return found
 
 
 if __name__ == "__main__":
-    passed = run()
-    print(f"\n{passed}/{len(CASES)} coverage cases")
-    sys.exit(0 if passed == len(CASES) else 1)
+    sys.exit(report(results(), "coverage cases"))

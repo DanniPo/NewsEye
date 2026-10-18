@@ -1,0 +1,11 @@
+{
+ "run": "2026-10-16T00:21:49",
+ "sentence_model": "cardiffnlp/twitter-roberta-base-sentiment-latest",
+ "targeted": {
+  "ready": true,
+  "package": "NewsSentiment 1.2.28",
+  "torch": "2.0.1+cu118",
+  "python": "3.11.17"
+ },
+ "unscored": 0
+}

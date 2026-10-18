@@ -34,7 +34,13 @@ import html
 import re
 from collections import Counter, defaultdict
 
-from backend.config import NAME_TITLES, REPORTING_VERBS
+from backend.config import (
+    FRAMING_SENTIMENT,
+    FRAMING_TARGETED_THRESHOLD,
+    NAME_TITLES,
+    REPORTING_VERBS,
+    TARGETED_ENT_TYPES,
+)
 from backend.db.connection import get_cursor
 from backend.nlp.entities import all_names, find_person, load_nlp, people
 from backend.nlp.truecase import build_casing_lexicon, is_title_case, truecase
@@ -282,7 +288,10 @@ def mentions(doc, person):
             role, verb, by = grammatical_role(span)
         records.append({"role": role, "verb": verb, "by": by,
                         "family": QUOTED if verb == QUOTED else family_of(verb),
-                        "title": title_of(span).lower(), "title_text": title_of(span)})
+                        "title": title_of(span).lower(), "title_text": title_of(span),
+                        # where the name sits in the parsed text, for targeted tone
+                        "start": span.start_char, "end": span.end_char,
+                        "label": span.label_})
     return records
 
 
@@ -352,7 +361,8 @@ def portray(person, days=None, nlp=None, context=None, tone=True):
     for (row, field), doc in zip(owners, nlp.pipe(texts), strict=True):
         for record in mentions(doc, person):
             record.update(field=field, text=row["title"] if field == "headline" else row["snippet"],
-                          headline=row["title"], url=row["url"], date=row["published_utc"])
+                          headline=row["title"], url=row["url"], date=row["published_utc"],
+                          model_text=doc.text)
             outlet = outlets[row["source_name"]]
             outlet["articles"].add(row["id"])
             outlet["records"].append(record)
@@ -362,32 +372,53 @@ def portray(person, days=None, nlp=None, context=None, tone=True):
 
 
 def add_tone(records):
-    """Score each headline or opening line, once per text, for general tone.
+    """Score each headline or opening line for tone; record how in "tone_by".
 
-    The sentence as a whole, not its attitude to the person: "Ruto condemns
-    the killings" reads negative without being negative about Ruto. Shown only
-    as a hint, with that warning, beside the headlines themselves.
+    By default the sentence as a whole, not its attitude to the person: "Ruto
+    condemns the killings" reads negative without being negative about Ruto.
+    Shown only as a hint, with that warning, beside the headlines themselves.
+    With targeted scoring on (FRAMING_SENTIMENT), each mention is first scored
+    for the writer's attitude toward the person, in the text the parser saw;
+    sentence tone covers whatever that cannot score.
     """
     from backend.analysis.framing import sentence_sentiment
 
-    texts = sorted({html.unescape(r["text"]) for r in records if r["text"]})
+    pending = records
+    if FRAMING_SENTIMENT == "targeted":
+        from backend.analysis import targeted
+        eligible = [r for r in records
+                    if r.get("model_text") and r.get("label") in TARGETED_ENT_TYPES]
+        if eligible and targeted.available():
+            scores = targeted.targeted_sentiment(
+                [(r["model_text"], r["start"], r["end"]) for r in eligible])
+            for record, score in zip(eligible, scores, strict=True):
+                if score is not None:
+                    record["tone"], record["tone_by"] = score, "targeted"
+        pending = [r for r in records if r.get("tone_by") != "targeted"]
+
+    texts = sorted({html.unescape(r["text"]) for r in pending if r["text"]})
     scores = dict(zip(texts, sentence_sentiment(texts), strict=True))
-    for record in records:
+    for record in pending:
         record["tone"] = scores.get(html.unescape(record["text"] or ""))
+        record["tone_by"] = "sentence"
 
 
-def tone_summary(scores):
+def tone_summary(scores, thresholds=None):
     """A few words for a set of tone scores, or None when there are too few.
 
     Labels per sentence follow framing.py: above +0.15 positive, below -0.15
-    negative. An outlet leans one way when that side outnumbers the other by a
-    quarter of its sentences; otherwise mostly neutral, or mixed.
+    negative, or each score's own threshold where given (targeted scores use
+    FRAMING_TARGETED_THRESHOLD). An outlet leans one way when that side
+    outnumbers the other by a quarter of its sentences; otherwise mostly
+    neutral, or mixed.
     """
-    scores = [s for s in scores if s is not None]
-    if len(scores) < TONE_MIN_SENTENCES:
+    thresholds = thresholds or [0.15] * len(scores)
+    pairs = [(s, t) for s, t in zip(scores, thresholds, strict=True) if s is not None]
+    if len(pairs) < TONE_MIN_SENTENCES:
         return None
-    positive = sum(s > 0.15 for s in scores) / len(scores)
-    negative = sum(s < -0.15 for s in scores) / len(scores)
+    positive = sum(s > t for s, t in pairs) / len(pairs)
+    negative = sum(s < -t for s, t in pairs) / len(pairs)
+    scores = [s for s, _ in pairs]
     if positive - negative >= 0.25:
         label = "leans positive"
     elif negative - positive >= 0.25:
@@ -420,7 +451,11 @@ def summarise(data, outlet_total):
         "acted_on": Counter((r["verb"], r["by"]) for r in by_role["acted on"]),
         "spoken_about_by": Counter(r["by"] for r in by_role["spoken about"]),
         "titles": Counter(r["title"] or "(no title)" for r in records),
-        "tone": tone_summary([r.get("tone") for r in records]),
+        "tone": tone_summary([r.get("tone") for r in records],
+                             [FRAMING_TARGETED_THRESHOLD if r.get("tone_by") == "targeted"
+                              else 0.15 for r in records]),
+        # how the tone was read: "targeted" toward the person, or "sentence"
+        "tone_by": sorted({r["tone_by"] for r in records if r.get("tone_by")}),
         # counted in lowercase, shown as most often written: "DCP leader", not "dcp leader"
         "title_forms": {title: Counter(r["title_text"] for r in records if r["title"] == title)
                         .most_common(1)[0][0] for title in {r["title"] for r in records if r["title"]}},

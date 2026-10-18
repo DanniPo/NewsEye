@@ -51,6 +51,11 @@ def extract_claims(text, max_claims=CLAIM_MAX_PER_ARTICLE):
             continue
 
         entities = [(e.text, e.label_) for e in sent.ents]
+        # where each entity sits in the stored sentence, in the same order, so a
+        # mention can be scored for the attitude toward it (analysis/targeted.py)
+        lead = len(sent.text) - len(sent.text.lstrip())
+        spans = [[e.start_char - sent.start_char - lead, e.end_char - sent.start_char - lead]
+                 for e in sent.ents]
         has_target = any(label in CLAIM_ENTITY_TYPES for _, label in entities)
         if not (has_target or NUMERIC_HINT.search(sentence)):
             continue
@@ -67,6 +72,7 @@ def extract_claims(text, max_claims=CLAIM_MAX_PER_ARTICLE):
         claims.append({
             "text": sentence,
             "entities": entities,
+            "spans": spans,
             "context": " ".join(context.split())[:CLAIM_CONTEXT_CHARS],
         })
         if len(claims) >= max_claims:

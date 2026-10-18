@@ -5,9 +5,15 @@ from backend.config import (
     EMBED_MAX_CHARS,
     FETCH_FULL_TEXT,
     RSS_FEEDS,
+    SNIPPET_MAX_LENGTH,
 )
 from backend.db.queries import existing_identifiers, insert_article
-from backend.ingestion.dedupe import clean_text, make_identifier, standardize_url
+from backend.ingestion.dedupe import (
+    clean_text,
+    is_web_url,
+    make_identifier,
+    standardize_url,
+)
 from backend.ingestion.fetch import build_embed_text, fetch_many
 from backend.ingestion.rss import fetch_feed, parse_datetime
 from backend.nlp.classification import classify_topics_batch
@@ -15,8 +21,10 @@ from backend.nlp.embeddings import generate_embeddings_batch
 
 
 def run_ingestion():
+    """Poll every feed once. Returns {"inserted": n, "failed": {outlet: reason}}."""
     started = time.time()
     total_inserted = 0
+    failed = {}
     for feed_config in RSS_FEEDS:
         source_name = feed_config["name"]
         # header only printed if the feed yields something new (below)
@@ -27,13 +35,14 @@ def run_ingestion():
         if not parsed.entries and (parsed.bozo or (status and status >= 400)):
             reason = f"HTTP {status}" if status else type(parsed.get("bozo_exception")).__name__
             print(f"{source_name}: FEED FAILED ({reason})")
+            failed[source_name] = reason
             continue
 
         candidates = []
         for entry in parsed.entries[:ARTICLES_PER_FEED]:
             title = clean_text(entry.get("title", ""))
             url = clean_text(entry.get("link", ""))
-            if title and url:
+            if title and is_web_url(url):
                 candidates.append((entry, title, url, make_identifier(url, title)))
         # every run re-reads the whole feed by design, so most items are already
         # known. Logging each one buried the real output under ~300 lines a run
@@ -52,7 +61,7 @@ def run_ingestion():
                 "url": url,
                 "url_canon": standardize_url(url),
                 "published": parse_datetime(entry),
-                "snippet": clean_text(entry.get("summary", ""))[:150],
+                "snippet": clean_text(entry.get("summary", ""))[:SNIPPET_MAX_LENGTH],
             })
 
         if not new_articles:
@@ -78,6 +87,7 @@ def run_ingestion():
             total_inserted += inserted
 
     print(f"Inserted {total_inserted} new articles in {time.time() - started:.1f}s")
+    return {"inserted": total_inserted, "failed": failed}
 
 if __name__ == "__main__":
     run_ingestion()

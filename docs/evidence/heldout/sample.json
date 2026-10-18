@@ -1,0 +1,188 @@
+{
+ "drawn": "2026-10-15T19:10:14",
+ "seed": 20261015,
+ "freeze": "2026-10-14T20:08:12+03:00",
+ "freeze_commit": "6841847",
+ "acceptance": {
+  "quotes": 0.9,
+  "roles": 0.8,
+  "names": 0.9
+ },
+ "pools": {
+  "quotes": 45,
+  "roles": 371,
+  "names": 360
+ },
+ "stories": [
+  1159,
+  1166,
+  1175,
+  1179,
+  1180,
+  1190,
+  1192,
+  1196,
+  1200,
+  1201,
+  1202,
+  1205,
+  1216,
+  1228,
+  1233,
+  1234,
+  1236,
+  1243
+ ],
+ "active_timings": [
+  {
+   "story": 1159,
+   "seconds": 28.31,
+   "articles": 2,
+   "read": 1
+  },
+  {
+   "story": 1166,
+   "seconds": 8.93,
+   "articles": 3,
+   "read": 2
+  },
+  {
+   "story": 1175,
+   "seconds": 11.47,
+   "articles": 3,
+   "read": 2
+  },
+  {
+   "story": 1179,
+   "seconds": 6.52,
+   "articles": 2,
+   "read": 1
+  },
+  {
+   "story": 1180,
+   "seconds": 6.15,
+   "articles": 2,
+   "read": 2
+  },
+  {
+   "story": 1190,
+   "seconds": 3.63,
+   "articles": 2,
+   "read": 0
+  },
+  {
+   "story": 1192,
+   "seconds": 10.22,
+   "articles": 3,
+   "read": 2
+  },
+  {
+   "story": 1196,
+   "seconds": 10.2,
+   "articles": 2,
+   "read": 1
+  },
+  {
+   "story": 1200,
+   "seconds": 9.91,
+   "articles": 5,
+   "read": 2
+  },
+  {
+   "story": 1201,
+   "seconds": 10.8,
+   "articles": 5,
+   "read": 3
+  },
+  {
+   "story": 1202,
+   "seconds": 7.19,
+   "articles": 4,
+   "read": 0
+  },
+  {
+   "story": 1205,
+   "seconds": 9.44,
+   "articles": 2,
+   "read": 2
+  },
+  {
+   "story": 1216,
+   "seconds": 13.15,
+   "articles": 3,
+   "read": 3
+  },
+  {
+   "story": 1228,
+   "seconds": 3.37,
+   "articles": 2,
+   "read": 0
+  },
+  {
+   "story": 1233,
+   "seconds": 3.96,
+   "articles": 2,
+   "read": 1
+  },
+  {
+   "story": 1234,
+   "seconds": 3.11,
+   "articles": 2,
+   "read": 0
+  },
+  {
+   "story": 1236,
+   "seconds": 4.94,
+   "articles": 2,
+   "read": 2
+  },
+  {
+   "story": 1243,
+   "seconds": 3.18,
+   "articles": 2,
+   "read": 0
+  }
+ ],
+ "names_key": {
+  "1": "A",
+  "2": "B",
+  "3": "B",
+  "4": "A",
+  "5": "B",
+  "6": "A",
+  "7": "A",
+  "8": "B",
+  "9": "A",
+  "10": "B",
+  "11": "A",
+  "12": "B",
+  "13": "A",
+  "14": "A",
+  "15": "A",
+  "16": "B",
+  "17": "B",
+  "18": "A",
+  "19": "A",
+  "20": "B",
+  "21": "B",
+  "22": "B",
+  "23": "A",
+  "24": "A",
+  "25": "A",
+  "26": "B",
+  "27": "A",
+  "28": "A",
+  "29": "B",
+  "30": "B",
+  "31": "B",
+  "32": "A",
+  "33": "A",
+  "34": "B",
+  "35": "B",
+  "36": "B",
+  "37": "B",
+  "38": "A",
+  "39": "B",
+  "40": "A"
+ }
+}

@@ -23,9 +23,6 @@ def _pick(result: dict) -> tuple:
         label = FALLBACK_LABEL
     return label, round(score, 3)
 
-def classify_topic(headline: str) -> tuple:
-    return _pick(classifier(headline, candidate_labels=TOPIC_LABELS))
-
 def classify_topics_batch(headlines: list, batch_size: int = 16) -> list:
     # passing a list lets the pipeline batch inputs into single GPU forward passes
     results = classifier(headlines, candidate_labels=TOPIC_LABELS, batch_size=batch_size)

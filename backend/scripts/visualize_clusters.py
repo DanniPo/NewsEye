@@ -64,7 +64,8 @@ def visualize_clusters(topic=None, window_days=CLUSTER_WINDOW_DAYS, output=OUTPU
 
     fig, ax = plt.subplots(figsize=(13, 10))
     ax.scatter(*coords[~clustered].T, s=6, color=NOISE, label="unclustered")
-    ax.scatter(*coords[clustered & ~chosen].T, s=10, color=OTHER, label="other clusters")
+    if topic:
+        ax.scatter(*coords[clustered & ~chosen].T, s=10, color=OTHER, label="other clusters")
     ax.scatter(*coords[chosen].T, s=16, color=HIGHLIGHT,
                label=f"{topic} clusters" if topic else "in a cluster",
                edgecolors="white", linewidths=0.4)
@@ -81,7 +82,11 @@ def visualize_clusters(topic=None, window_days=CLUSTER_WINDOW_DAYS, output=OUTPU
                      key=lambda s: (-len(s["sources"]), -len(s["points"])))[:LABELLED_STORIES]
     for story in largest:
         x, y = np.mean(story["points"], axis=0)
-        ax.annotate("\n".join(textwrap.wrap(story["title"], 34)[:2]), (x, y),
+        # two lines at most; a cut headline ends in an ellipsis, never mid-phrase
+        lines = textwrap.wrap(story["title"], 34)
+        if len(lines) > 2:
+            lines = [lines[0], textwrap.shorten(" ".join(lines[1:]), 33, placeholder=" …")]
+        ax.annotate("\n".join(lines), (x, y),
                     xytext=(6, 6), textcoords="offset points", fontsize=7, color="#333333",
                     bbox={"boxstyle": "round,pad=0.2", "fc": "white", "ec": "none", "alpha": 0.8})
 

@@ -142,6 +142,34 @@ FRAMING_MIN_SOURCES = 2
 # anything - one sentence is an anecdote, not a frame
 FRAMING_MIN_MENTIONS = 2
 
+# How a mention is scored. "sentence": the tone of the whole sentence (RoBERTa),
+# which reads "Ruto condemns the killings" as negative without it being negative
+# about Ruto. "targeted": the writer's attitude toward that entity (NewsMTSC's
+# GRU-TSC, Hamborg & Donnay 2021), falling back to sentence tone for anything it
+# cannot score. Targeted since 16 Oct 2026: on NewsMTSC's human-labelled test sets
+# it beat sentence tone by +0.150 F1m (rw, 95% CI +0.113 to +0.189) and +0.199
+# (mt, +0.167 to +0.232), the rule fixed before the run (eval/framing/benchmark.md).
+# The labelled Kenyan sample (eval/framing/report.md) confirms or reverts it;
+# FRAMING_SENTIMENT=sentence in the environment switches back without a code change.
+FRAMING_SENTIMENT = os.environ.get("FRAMING_SENTIMENT", "targeted")
+# the neutral band for targeted scores (P(positive) - P(negative)), tuned on the
+# NewsMTSC rw dev split; retune on the Kenyan dev split once it is labelled
+FRAMING_TARGETED_THRESHOLD = 0.29
+# NewsMTSC was trained on people only; add a type only where the report's
+# "not PERSON" row supports it
+TARGETED_ENT_TYPES = {"PERSON"}
+# NewsSentiment needs Python 3.8-3.11, torch < 2.1 and transformers <= 4.24, so it
+# runs in its own environment as a long-lived worker (backend/analysis/targeted.py)
+NEWSMTSC_PYTHON = os.environ.get("NEWSMTSC_PYTHON") or os.path.join(
+    os.path.expanduser("~"), ".venvs", "newsmtsc",
+    "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python")
+# Targeted scores already computed, keyed by text, offsets and model version. The
+# model takes 1-2 s a mention on this laptop's CPU and ~0.26 s on its GPU, and
+# headlines never change, so each mention is scored once. Outside the
+# repository: it holds headline text.
+TARGETED_CACHE = os.environ.get("TARGETED_CACHE") or os.path.join(
+    os.path.expanduser("~"), ".cache", "newseye", "targeted_scores.jsonl")
+
 # --- Kenyan entities (names, institutions, places) ---
 # spaCy's small English model, named here so it is never a library default. It
 # tagged Kenyan names and institutions correctly in 26% of headlines and 74% of

@@ -15,6 +15,7 @@ import sys
 from collections import defaultdict
 
 from backend.nlp.entities import load_entities, load_nlp, spellings
+from backend.scripts.testkit import case, report
 
 # (sentence, entities that must appear as (text, label, id or None), texts that must not be PERSON)
 CASES = [
@@ -90,28 +91,34 @@ def check_list():
     return problems
 
 
-def run():
+def entity(text, label, ident):
+    return f"{text} = {label}" + (f" ({ident})" if ident else "")
+
+
+def expectation(wanted, not_people):
+    parts = [entity(*w) for w in wanted]
+    if not_people:
+        parts.append("not a person: " + ", ".join(not_people))
+    return "; ".join(parts)
+
+
+def results():
+    problems = check_list()
+    rows = [case(f"the list: {len(load_entities()['people'])} people, one person per alias",
+                 "no problems", "; ".join(problems) or "no problems", not problems)]
     nlp = load_nlp()
-    passed = 0
     for text, wanted, not_people in CASES:
         doc = nlp(text)
         found = {(e.text, e.label_, e.ent_id_ or None) for e in doc.ents}
         people = {e.text for e in doc.ents if e.label_ == "PERSON"}
         missing = [w for w in wanted if w not in found]
         invented = [n for n in not_people if n in people]
-        ok = not missing and not invented
-        passed += ok
-        detail = ""
-        if not ok:
-            detail = f"\n        missing {missing} invented {invented}\n        got {sorted(found)}"
-        print(f"  {'PASS' if ok else 'FAIL'}  {text[:70]}{detail}")
-    return passed
+        # everything spaCy returned, so a reader sees what else came out
+        actual = "; ".join(entity(*f) for f in sorted(found, key=lambda f: text.find(f[0])))
+        rows.append(case(text, expectation(wanted, not_people), actual or "no entities",
+                         not missing and not invented))
+    return rows
 
 
 if __name__ == "__main__":
-    problems = check_list()
-    print(f"list: {len(load_entities()['people'])} people, "
-          f"{'no problems' if not problems else '; '.join(problems)}\n")
-    passed = run()
-    print(f"\n{passed}/{len(CASES)} entity cases")
-    sys.exit(0 if passed == len(CASES) and not problems else 1)
+    sys.exit(report(results(), "entity cases"))
