@@ -18,9 +18,11 @@ SHOULD_SEPARATE means "showing these side by side would mislead".
 
     python -m backend.scripts.test_casualties
 """
+import sys
 from datetime import UTC, datetime, timedelta
 
 from backend.analysis.digest import build_digest, digest_groups
+from backend.scripts.testkit import case, report
 
 T0 = datetime(2026, 9, 16, 9, 0, tzinfo=UTC)
 def at(hours):
@@ -124,34 +126,28 @@ def _grouped_across_sources(claims):
     return None
 
 
-def run(cases, expect_grouped):
-    passed, results = 0, []
-    for name, claims in cases:
+def outcome(group):
+    """What the digest did with a pair, in words."""
+    if group is None:
+        return "kept apart"
+    return (f"grouped as {group['unit']}: "
+            + ", ".join(f"{r['figure']} ({r['source']})" for r in group["values"]))
+
+
+def results():
+    rows = []
+    for name, claims in SHOULD_GROUP:
         group = _grouped_across_sources(claims)
-        grouped = group is not None
-        ok = grouped == expect_grouped
-        passed += ok
-        if group:
-            detail = (f"{group['unit']}: "
-                      + ", ".join(f"{r['figure']}({r['source']})" for r in group["values"]))
-        else:
-            detail = "kept apart"
-        results.append((ok, name, detail))
-    return passed, results
+        rows.append(case(name, "grouped: rival counts of one thing", outcome(group),
+                         group is not None))
+    for name, claims in SHOULD_SEPARATE:
+        group = _grouped_across_sources(claims)
+        rows.append(case(name, "kept apart: side by side would mislead", outcome(group),
+                         group is None))
+    return rows
 
 
 if __name__ == "__main__":
-    tp, group_rows = run(SHOULD_GROUP, True)
-    tn, apart_rows = run(SHOULD_SEPARATE, False)
-
-    print("=== SHOULD GROUP (rival counts of one thing) ===")
-    for ok, name, detail in group_rows:
-        print(f"  {'PASS' if ok else 'MISS'}  {name:<38} {detail}")
-    print("\n=== SHOULD SEPARATE (would mislead side by side) ===")
-    for ok, name, detail in apart_rows:
-        print(f"  {'PASS' if ok else 'FALSE GROUP'}  {name:<38} {detail}")
-
-    total = len(SHOULD_GROUP) + len(SHOULD_SEPARATE)
-    print(f"\n{tp}/{len(SHOULD_GROUP)} grouped correctly, "
-          f"{tn}/{len(SHOULD_SEPARATE)} separated correctly "
-          f"-> {tp + tn}/{total}")
+    # this script once printed MISS and FALSE GROUP but always exited 0, so a
+    # regression here could never fail CI
+    sys.exit(report(results(), "casualty cases"))

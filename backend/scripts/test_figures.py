@@ -8,8 +8,11 @@ digest_groups: one group across two outlets, or none.
 
     python -m backend.scripts.test_figures
 """
+import sys
+
 from backend.analysis.digest import build_digest, digest_groups
 from backend.analysis.figures import parse_figures
+from backend.scripts.testkit import case, report
 
 # pairs that must be grouped, and pairs that must not - the second list is the
 # regression guard for the subject/unit matching
@@ -118,15 +121,6 @@ MIXED_CLAIMS = [
     {"text": "The directive gives traders 60 days before enforcement begins", "source": "People Daily"},
 ]
 
-print("=== PARSING ===")
-for sentence in PARSE_CASES:
-    figures = parse_figures(sentence)
-    rendered = ", ".join(
-        f"{f['text']}={f['value']:,.4g} [{f['unit'] or 'no unit'}]" for f in figures
-    ) or "(none)"
-    print(f"  {rendered}")
-    print(f"             {sentence[:78]}")
-
 def cross_source_group(claims):
     """The first digest group spanning two or more outlets, if there is one."""
     for index, claim in enumerate(claims):
@@ -137,38 +131,48 @@ def cross_source_group(claims):
     return None
 
 
-print("\n=== GROUPING A MIXED CLUSTER ===")
-for group in digest_groups(build_digest(
-        [dict(c, article_id=i + 1) for i, c in enumerate(MIXED_CLAIMS)])):
-    print(f"\n{len(group['sources'])} outlets in '{group['unit']}':")
-    for row in group["values"]:
-        print(f"   {row['figure']:>16}  [{row['source']}]")
+def outcome(group):
+    if group is None:
+        return "kept apart"
+    return "grouped: " + ", ".join(f"{r['figure']} ({r['source']})" for r in group["values"])
 
-print("\n=== SUBJECT/UNIT GATE ===")
-failures = 0
-for name, claims in EXPECT_GROUPED:
-    group = cross_source_group(claims)
-    ok = group is not None
-    failures += not ok
-    detail = (", ".join(f"{r['figure']}({r['source']})" for r in group["values"])
-              if group else "not grouped")
-    print(f"  {'PASS' if ok else 'FAIL'}  expect grouped   {name:<34} {detail}")
 
-for name, claims in EXPECT_SEPARATE:
-    group = cross_source_group(claims)
-    ok = group is None
-    failures += not ok
-    detail = ("kept apart" if ok else
-              "FALSE GROUP: " + ", ".join(f"{r['figure']}({r['source']})"
-                                          for r in group["values"]))
-    print(f"  {'PASS' if ok else 'FAIL'}  expect separate  {name:<34} {detail}")
+def results():
+    rows = []
+    for name, claims in EXPECT_GROUPED:
+        group = cross_source_group(claims)
+        rows.append(case(name, "grouped across two outlets", outcome(group), group is not None))
+    for name, claims in EXPECT_SEPARATE:
+        group = cross_source_group(claims)
+        rows.append(case(name, "kept apart", outcome(group), group is None))
+    # kept visible in the record, never counted as a failure
+    for name, claims, why in KNOWN_LIMITATIONS:
+        group = cross_source_group(claims)
+        rows.append(case(name, "grouped across two outlets",
+                         outcome(group) + ("" if group else f" - {why}"), None))
+    return rows
 
-print("\n=== KNOWN LIMITATIONS (not counted as failures) ===")
-for name, claims, why in KNOWN_LIMITATIONS:
-    group = cross_source_group(claims)
-    print(f"  {'grouped' if group else 'KNOWN  '}  {name:<34} {why}")
 
-total = len(EXPECT_GROUPED) + len(EXPECT_SEPARATE)
-print(f"\n{total - failures}/{total} gate cases passed, "
-      f"{len(KNOWN_LIMITATIONS)} known limitation(s)")
-raise SystemExit(1 if failures else 0)
+def show_parsing():
+    """What the parser reads from each sentence: shown, not asserted."""
+    print("=== PARSING ===")
+    for sentence in PARSE_CASES:
+        figures = parse_figures(sentence)
+        rendered = ", ".join(
+            f"{f['text']}={f['value']:,.4g} [{f['unit'] or 'no unit'}]" for f in figures
+        ) or "(none)"
+        print(f"  {rendered}")
+        print(f"             {sentence[:78]}")
+
+    print("\n=== GROUPING A MIXED CLUSTER ===")
+    for group in digest_groups(build_digest(
+            [dict(c, article_id=i + 1) for i, c in enumerate(MIXED_CLAIMS)])):
+        print(f"\n{len(group['sources'])} outlets in '{group['unit']}':")
+        for row in group["values"]:
+            print(f"   {row['figure']:>16}  [{row['source']}]")
+
+
+if __name__ == "__main__":
+    show_parsing()
+    print("\n=== SUBJECT/UNIT GATE ===")
+    sys.exit(report(results(), "gate cases"))

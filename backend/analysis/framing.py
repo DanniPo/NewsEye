@@ -16,7 +16,10 @@ from backend.config import (
     CORPUS_UNIVERSAL_TERMS,
     FRAMING_MIN_MENTIONS,
     FRAMING_MIN_SOURCES,
+    FRAMING_SENTIMENT,
+    FRAMING_TARGETED_THRESHOLD,
     SENTIMENT_MODEL,
+    TARGETED_ENT_TYPES,
 )
 
 # entities that can be described warmly or coldly: people, organisations,
@@ -88,14 +91,26 @@ def _merge_aliases(counts):
     return canonical
 
 
+def _span(claim, index, text):
+    """(start, end) of the claim's index-th entity in its sentence, if recorded and
+    still pointing at that entity; claims stored before spans existed have none."""
+    spans = claim.get("spans") or []
+    if index >= len(spans):
+        return None
+    start, end = spans[index]
+    if claim["text"][start:end] != text.replace("\n", " "):
+        return None
+    return start, end
+
+
 def collect_mentions(claims):
-    """{entity: [(source, sentence)]} for every entity worth framing."""
+    """{entity: [(source, sentence, span or None, label)]} for every entity worth framing."""
     counts = defaultdict(int)
     raw = []
     for claim in claims:
         source = claim.get("source")
         seen = set()
-        for text, label in claim.get("entities") or []:
+        for index, (text, label) in enumerate(claim.get("entities") or []):
             if label not in FRAMED_ENT_TYPES or not looks_like_entity(text):
                 continue
             key = normalize_entity(text)
@@ -108,14 +123,14 @@ def collect_mentions(claims):
                 continue
             seen.add(key)
             counts[key] += 1
-            raw.append((key, text, source, claim["text"]))
+            raw.append((key, text, source, claim["text"], _span(claim, index, text), label))
 
     if not raw:
         return {}
 
     alias = _merge_aliases(counts)
     display, mentions = {}, defaultdict(list)
-    for key, text, source, sentence in raw:
+    for key, text, source, sentence, span, label in raw:
         target = alias.get(key, key)
         # Show the entity the way the papers wrote it, minus NER's stray
         # punctuation. strip() takes a set of characters here, not a substring,
@@ -130,7 +145,7 @@ def collect_mentions(claims):
         if previous is None or (previous.isupper() and not surface.isupper()):
             display[target] = surface if not surface.isupper() or len(surface) <= 5 \
                 else surface.title()
-        mentions[target].append((source, sentence))
+        mentions[target].append((source, sentence, span, label))
     return {display[k]: v for k, v in mentions.items()}
 
 
@@ -147,10 +162,39 @@ def sentence_sentiment(sentences, batch_size=16):
     return scores
 
 
-def _frame_label(score):
-    if score > 0.15:
+def _frame_label(score, threshold=0.15):
+    if score > threshold:
         return "positive"
-    return "negative" if score < -0.15 else "neutral"
+    return "negative" if score < -threshold else "neutral"
+
+
+def score_mentions(rows, method=None):
+    """[(score, how)] per (sentence, span, label) row; how is "targeted" or "sentence".
+
+    With targeted scoring on, a mention of a type in TARGETED_ENT_TYPES whose span
+    is known is scored for the writer's attitude toward that entity. Everything
+    else - other types, claims stored without spans, items the model cannot take,
+    or the model missing altogether - gets the sentence's tone instead.
+    """
+    method = method or FRAMING_SENTIMENT
+    scored = {}
+    if method == "targeted":
+        from backend.analysis import targeted
+        wanted = [i for i, (_, span, label) in enumerate(rows)
+                  if span and label in TARGETED_ENT_TYPES]
+        if wanted and targeted.available():
+            scores = targeted.targeted_sentiment(
+                [(rows[i][0], *rows[i][1]) for i in wanted])
+            scored = {i: (s, "targeted") for i, s in zip(wanted, scores, strict=True)
+                      if s is not None}
+    rest = [i for i in range(len(rows)) if i not in scored]
+    for i, score in zip(rest, sentence_sentiment([rows[i][0] for i in rest]), strict=True):
+        scored[i] = (score, "sentence")
+    return [scored[i] for i in range(len(rows))]
+
+
+def _threshold(how):
+    return FRAMING_TARGETED_THRESHOLD if how != "sentence" else 0.15
 
 
 def analyze_framing(claims, min_sources=FRAMING_MIN_SOURCES,
@@ -159,20 +203,20 @@ def analyze_framing(claims, min_sources=FRAMING_MIN_SOURCES,
     mentions = collect_mentions(claims)
     comparable = {
         entity: rows for entity, rows in mentions.items()
-        if len({source for source, _ in rows if source}) >= min_sources
+        if len({row[0] for row in rows if row[0]}) >= min_sources
     }
     if not comparable:
         return []
 
-    # one batched pass over every sentence that needs scoring
-    flat = [(entity, source, sentence)
+    # one batched pass over every mention that needs scoring
+    flat = [(entity, source, sentence, span, label)
             for entity, rows in comparable.items()
-            for source, sentence in rows]
-    scores = sentence_sentiment([sentence for _, _, sentence in flat])
+            for source, sentence, span, label in rows]
+    scores = score_mentions([(sentence, span, label) for _, _, sentence, span, label in flat])
 
     grouped = defaultdict(list)
-    for (entity, source, sentence), score in zip(flat, scores, strict=True):
-        grouped[(entity, source)].append((score, sentence))
+    for (entity, source, sentence, _, _), (score, how) in zip(flat, scores, strict=True):
+        grouped[(entity, source)].append((score, sentence, how))
 
     records = []
     for entity in comparable:
@@ -180,21 +224,26 @@ def analyze_framing(claims, min_sources=FRAMING_MIN_SOURCES,
         for (ent, source), rows in grouped.items():
             if ent != entity or not source or len(rows) < min_mentions:
                 continue
-            mean = sum(score for score, _ in rows) / len(rows)
+            mean = sum(score for score, _, _ in rows) / len(rows)
             # the sentence that most drives this outlet's score, for the report
             sharpest = max(rows, key=lambda r: abs(r[0]))
+            methods = {how for _, _, how in rows}
+            scored_by = methods.pop() if len(methods) == 1 else "mixed"
             per_source.append({
                 "source": source,
                 # the outlet's average across every mention of this entity
                 "score": round(mean, 3),
-                "frame": _frame_label(mean),
+                "frame": _frame_label(mean, _threshold(scored_by)),
                 "mentions": len(rows),
                 "example": sharpest[1],
                 # the quoted sentence's own label. Showing the average beside a
                 # single quote implied the label described that quote, so one
                 # sentence appeared "neutral" under one entity and "positive"
                 # under another - it was the averages differing, not the sentence.
-                "example_frame": _frame_label(sharpest[0]),
+                "example_frame": _frame_label(sharpest[0], _threshold(sharpest[2])),
+                # "targeted": attitude toward this entity; "sentence": the tone of
+                # the sentences naming it; "mixed": some of each
+                "scored_by": scored_by,
             })
 
         if len(per_source) < min_sources:

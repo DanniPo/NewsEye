@@ -13,6 +13,7 @@ Each case gives the stored clusters (id -> articles), the new run's clusters
 import sys
 
 from backend.nlp.clustering import match_clusters
+from backend.scripts.testkit import case, report
 
 CASES = [
     ("identical run",
@@ -58,13 +59,20 @@ CASES = [
 ]
 
 
-if __name__ == "__main__":
-    passed = 0
+def describe(inherited, labels):
+    """What each new cluster is given, in words."""
+    return ", ".join(f"cluster {label} keeps id {inherited[label]}" if label in inherited
+                     else f"cluster {label} gets a fresh id" for label in sorted(labels))
+
+
+def results():
+    rows = []
     for name, previous, current, expected in CASES:
         got = match_clusters(previous, current)
-        ok = got == expected
-        passed += ok
-        detail = "" if ok else f"  expected {expected}, got {got}"
-        print(f"  {'PASS' if ok else 'FAIL'}  {name}{detail}")
-    print(f"\n{passed}/{len(CASES)} continuity cases")
-    sys.exit(0 if passed == len(CASES) else 1)
+        rows.append(case(name, describe(expected, current), describe(got, current),
+                         got == expected))
+    return rows
+
+
+if __name__ == "__main__":
+    sys.exit(report(results(), "continuity cases"))

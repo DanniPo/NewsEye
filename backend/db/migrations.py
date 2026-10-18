@@ -79,6 +79,7 @@ BASE_SCHEMA = [
             consensus        jsonb,
             framing          jsonb,
             figure_digest    jsonb,
+            quotes           jsonb,
             sources_used     integer,
             summary_model    text,
             sentiment_model  text,
@@ -148,6 +149,11 @@ MIGRATIONS = [
     """),
     ("cluster_analysis.figure_digest", """
         ALTER TABLE cluster_analysis ADD COLUMN IF NOT EXISTS figure_digest jsonb
+    """),
+    # who was quoted saying what, and how each outlet's version compares - the
+    # quoted words only, never the article (see analysis/quotes.py)
+    ("cluster_analysis.quotes", """
+        ALTER TABLE cluster_analysis ADD COLUMN IF NOT EXISTS quotes jsonb
     """),
     # Clusters now keep their id across runs, so created_at stopped meaning
     # "when clustering last ran" - the passive tier's due-check reads this.
