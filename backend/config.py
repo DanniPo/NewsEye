@@ -201,9 +201,12 @@ NAME_TITLES = (
 # from the claim, "assures" lends it credit. Shown to readers alongside the verbs
 # themselves; nothing is scored. Two-word entries are verb + particle.
 REPORTING_VERBS = {
+    # the held-out test (19 Oct) found "Kalonzo Musyoka has reaffirmed that..." read
+    # as acting: reaffirm and its kin were missing
     "said": ("say", "tell", "state", "note", "add", "explain", "announce", "reveal",
              "respond", "reply", "react", "describe", "disclose", "confirm", "speak",
-             "remark", "address", "write", "report"),
+             "remark", "address", "write", "report", "affirm", "reaffirm", "reiterate",
+             "stress", "emphasise", "emphasize", "recall", "acknowledge", "admit"),
     "claimed": ("claim", "allege", "insist", "maintain", "contend", "purport"),
     "promised or assured": ("assure", "reassure", "pledge", "promise", "vow"),
     "praised": ("hail", "laud", "praise", "commend", "congratulate", "thank", "applaud",

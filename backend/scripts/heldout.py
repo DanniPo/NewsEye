@@ -128,8 +128,16 @@ def sample_roles(articles, rng, n):
     return pool[:n], len(pool)
 
 
-def tagging(doc):
-    found = [f"{e.text} ({e.label_}{': ' + e.ent_id_ if e.ent_id_ else ''})"
+def tagging(doc, headline=None):
+    """'text (TYPE); ...' in the headline's own wording.
+
+    Newseye parses a re-cased copy with straight apostrophes, and its name list
+    adds ids. Shown as parsed, either gave away which tagging was Newseye's, so
+    the labeller was not blind: "Raila (PERSON: raila-odinga)" beside "Raila
+    (GPE)". Both taggings now quote the headline itself and carry no ids.
+    """
+    source = headline if headline is not None and len(headline) == len(doc.text) else doc.text
+    found = [f"{source[e.start_char:e.end_char]} ({e.label_})"
              for e in doc.ents if e.label_ in ENTITY_TYPES]
     return "; ".join(found) or "(nothing found)"
 
@@ -148,8 +156,9 @@ def sample_names(articles, rng, n):
     lexicon = corpus_context(days=3)["lexicon"]
     rows, key = [], {}
     for index, article in enumerate(chosen, start=1):
-        plain = tagging(baseline(article["title"]))
-        ours = tagging(system(CURLY_POSSESSIVE.sub("'", truecase(article["title"], lexicon))))
+        plain = tagging(baseline(article["title"]), article["title"])
+        ours = tagging(system(CURLY_POSSESSIVE.sub("'", truecase(article["title"], lexicon))),
+                       article["title"])
         newseye_first = rng.random() < 0.5
         key[index] = "A" if newseye_first else "B"
         a, b = (ours, plain) if newseye_first else (plain, ours)

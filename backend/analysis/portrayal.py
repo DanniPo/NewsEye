@@ -70,6 +70,10 @@ DATELINE = re.compile(r"^[A-Z][A-Z .'\-]{2,}(?:,\s*[A-Z][a-z]+)?(?:\s+[A-Z][a-z]
 TONE_MIN_SENTENCES = 4
 # verbs that say what someone is rather than what they do
 COPULAS = {"be", "remain", "become", "seem", "appear"}
+# verbs that carry no action of their own; at the very end of a text they mean
+# the clause was cut off before its real verb
+AUXILIARIES = {"have", "be", "do", "will", "would", "can", "could", "shall", "should",
+               "may", "might", "must"}
 # nouns that carry the action in "takes aim at", "takes a swipe at", "hits out at"
 TARGET_NOUNS = {"aim", "swipe", "jibe", "dig", "shot", "shots", "potshots", "broadside"}
 # title words that describe a role only when they attach to the name itself
@@ -126,8 +130,12 @@ def _agent(verb):
 def grammatical_role(span):
     """(role, verb phrase, by whom) from the dependency parse."""
     token = span.root
-    # "Ruto and Gachagua clash": a second name shares the first's role
-    while token.dep_ == "conj" and token.head.ent_type_ == "PERSON":
+    # "Ruto and Gachagua clash": a second name shares the first's role. A name in
+    # apposition plays the part of the words it renames: a title in front of a
+    # name ("Nairobi Senator Edwin Sifuna has said") can parse the name as
+    # renaming "Nairobi", and the held-out test found "... EALA MP Winnie Odinga
+    # are preparing" read as named in passing
+    while token.dep_ == "appos" or (token.dep_ == "conj" and token.head.ent_type_ == "PERSON"):
         token = token.head
     dep = token.dep_
     # a name or acronym is never the verb: "Gachagua's DCP" once yielded "dcps"
@@ -135,6 +143,11 @@ def grammatical_role(span):
         return "mentioned", None, None
     if dep in ("nsubj", "nsubjpass"):
         verb = token.head
+        # an opening line is cut at 150 characters and can stop mid-clause:
+        # "... Oburu has" left "have" as his verb, and he was counted as acting
+        if (verb.lemma_.lower() in AUXILIARIES
+                and all(t.is_punct for t in verb.doc[verb.i + 1:])):
+            return "mentioned", None, None
         phrase = verb_phrase(verb)
         if dep == "nsubjpass":
             return "acted on", phrase, _agent(verb)
@@ -142,6 +155,11 @@ def grammatical_role(span):
             attribute = next((c for c in verb.children if c.dep_ in ("acomp", "attr")), None)
             words = [t.text for t in attribute.subtree][:6] if attribute is not None else []
             return "described", " ".join(words) or None, None
+        if not family_of(phrase):
+            # "has called for reforms": "call for" is a reporting verb, but "for"
+            # hangs off the verb as a preposition, so the phrase read as "call"
+            phrase = next((f"{phrase} {c.lower_}" for c in verb.children
+                           if c.dep_ == "prep" and family_of(f"{phrase} {c.lower_}")), phrase)
         return ("speaks" if family_of(phrase) else "acts"), phrase, None
     if dep in ("dobj", "obj", "dative"):
         verb = token.head
