@@ -254,7 +254,8 @@ def analyse(record, started, n):
                                "quotes": len(quotes), "figures": len(entry["figure_digest"] or [])})
         bundle["clusters"].append(entry)
     record.stage("Analyse", "fetch text, spaCy claims, MiniLM + NLI coverage, quotes, "
-                            "figures, RoBERTa tone", time.time() - mark)
+                            "figures, tone (NewsMTSC for people, RoBERTa for the rest)",
+                 time.time() - mark)
     return bundle
 
 
@@ -336,46 +337,94 @@ def publish(record, bundle, out_dir):
                  - record.stages[-1][2])
 
 
+# what each part of the run is called in the record, in plain words
+STEP_TITLES = {"Database": "Checking the database",
+               "Ingest": "Collecting new articles from the feeds",
+               "Cluster": "Grouping articles into stories",
+               "Analyse": "Comparing how the outlets covered each story",
+               "Publish": "Building the site"}
+STAGE_NAMES = {"Model load": "Loading the models", "Ingest": "Collecting new articles",
+               "Cluster": "Grouping into stories", "Summarise": "Choosing each story's headline",
+               "Analyse": "Comparing the outlets", "Publish": "Building the site",
+               "Bundle": "Making the one-file copy"}
+
+
+def duration(seconds):
+    return f"{seconds:.1f} s" if seconds < 90 else f"{seconds / 60:.1f} min"
+
+
 def render(record, env, began, seconds, out_dir):
-    passed = sum(1 for c in record.checks if c["ok"])
-    tree = " (with uncommitted changes)" if env["dirty"] else ""
-    lines = [
-        f"# End-to-end run - {began:%Y-%m-%d %H:%M}",
-        "",
-        f"Commit `{env['commit']}`{tree} · Python {env['python']} · torch {env['torch']} "
-        f"on {env['device']} · {seconds / 60:.1f} minutes",
-        "",
-        f"**{passed} of {len(record.checks)} checks passed.** Input: the RSS feeds of "
-        f"{len(RSS_FEEDS)} Kenyan outlets. Output: `{out_dir}/site/` and the one-file copy "
-        f"`{out_dir}/newseye-latest.html`.",
-        "",
-        "Regenerate with `python -m backend.scripts.end_to_end`. Every stage runs the "
-        "production code: the same calls the scheduled passive tier and the active tier make.",
-        "",
-        "## Stages",
-        "",
-        "| Stage | Components | Time |",
-        "|---|---|---|",
-    ]
-    lines += [f"| {name} | {cell(component)} | {secs:.1f}s |"
+    """The record for a reader first: the verdict, what needs attention, then each step
+    in plain words. Test IDs, requirements and the commit are kept at the end, for the
+    report and for reproducing the run."""
+    checks = record.checks
+    failed = [c for c in checks if not c["ok"]]
+    published = any(c["stage"] == "Publish" for c in checks)
+    verdict = ("All checks passed" if not failed
+               else f"{len(failed)} of {len(checks)} checks failed")
+    summary = (f"The run read the RSS feeds of {len(RSS_FEEDS)} Kenyan outlets, grouped the "
+               "articles into stories and compared how the outlets covered the newest ones. ")
+    summary += (f"The site it built is in `{out_dir}/site/`, with a one-file copy at "
+                f"`{out_dir}/newseye-latest.html`." if published
+                else "**No site was built**, because no story could be compared.")
+    lines = [f"# Newseye end-to-end run, {began:%d %B %Y} at {began:%H:%M}", "",
+             f"**{verdict}** ({len(checks) - len(failed)} of {len(checks)} passed), "
+             f"in {duration(seconds)}.", "", summary, ""]
+
+    if failed:
+        # the same error on several stories is one problem, not five
+        by_error = {}
+        for c in failed:
+            by_error.setdefault(c["actual"], []).append(c)
+        lines += ["## What needs attention", ""]
+        for actual, group in by_error.items():
+            if len(group) == 1:
+                c = group[0]
+                lines.append(f"- **{c['check']}** failed: {cell(actual)} "
+                             f"(expected: {cell(c['expected'])})")
+            else:
+                names = ", ".join(c["check"] for c in group)
+                lines.append(f"- **{len(group)} checks failed with the same error**: "
+                             f"{cell(actual)} ({names})")
+        if not published:
+            lines.append("- The site was not built, since it needs at least one compared story.")
+        lines.append("")
+
+    lines += ["## Step by step", ""]
+    for stage in dict.fromkeys(c["stage"] for c in checks):
+        lines += [f"### {STEP_TITLES.get(stage, stage)}", ""]
+        for c in (c for c in checks if c["stage"] == stage):
+            # expected beside actual for every check, passed or not: the record of
+            # expected and actual results is what the evaluation asks for
+            mark = "✓" if c["ok"] else "✗"
+            lines.append(f"- {mark} {c['check']}: {cell(c['actual'])} "
+                         f"(expected: {cell(c['expected'])})")
+        lines.append("")
+
+    lines += ["## Time taken", "", "| Step | What it uses | Time |", "|---|---|---|"]
+    lines += [f"| {STAGE_NAMES.get(name, name)} | {cell(component)} | {duration(secs)} |"
               for name, component, secs in record.stages]
-    lines += ["", "## Checks at each hand-off", "",
-              "System test: the whole pipeline on live data, black-box at each hand-off "
-              "between components.", "",
-              "| Test ID | Traces to | Stage | Check | Expected | Actual | Verdict |",
-              "|---|---|---|---|---|---|---|"]
-    lines += [f"| {c['id']} | {c['trace']} | {c['stage']} | {cell(c['check'])} | "
-              f"{cell(c['expected'])} | {cell(c['actual'])} | "
-              f"{'PASS' if c['ok'] else 'FAIL'} |" for c in record.checks]
+
     if record.stories:
-        lines += ["", "## Stories followed from feed to page", "",
-                  "| Story | Headline | Outlets (read) | New this run | Facts | Quotes | "
-                  "Figures | Page |", "|---|---|---|---|---|---|---|---|"]
-        lines += [f"| {s['id']} | {cell(s['title'])} | {s['outlets']} ({s['readable']}) | "
+        lines += ["", "## Stories followed from the feeds to a page", "",
+                  "| Story | Headline | Outlets | Could be read | New this run | Facts | "
+                  "Quotes | Figures | Page |", "|---|---|---|---|---|---|---|---|---|"]
+        lines += [f"| {s['id']} | {cell(s['title'])} | {s['outlets']} | {s['readable']} | "
                   f"{'yes' if s['fresh'] else 'no'} | {s['facts']} | {s['quotes']} | "
                   f"{s['figures']} | {cell(s.get('page', ''))} |" for s in record.stories]
     if record.notes:
         lines += ["", "## Notes", ""] + [f"- {n}" for n in record.notes]
+
+    tree = " (with uncommitted changes)" if env["dirty"] else ""
+    lines += ["", "---", "", "## Reference", "",
+              f"Code: commit `{env['commit']}`{tree}; Python {env['python']}; torch "
+              f"{env['torch']} on {env['device']}. Every step runs the production code. "
+              "Regenerate with `python -m backend.scripts.end_to_end`.", "",
+              "The checks as cited in the test record and Chapter 5, with the requirement "
+              "each gives evidence for:", "",
+              "| ID | Check | Requirement | Result |", "|---|---|---|---|"]
+    lines += [f"| {c['id']} | {cell(c['check'])} | {c['trace']} | "
+              f"{'Pass' if c['ok'] else 'Fail'} |" for c in checks]
     return "\n".join(lines) + "\n"
 
 

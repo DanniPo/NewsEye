@@ -62,6 +62,8 @@ jobs:
           import backend.scripts.evaluation, backend.scripts.heldout
           import backend.analysis.targeted, backend.eval.benchmark_framing
           import backend.eval.sample_framing, backend.eval.score_framing
+          import backend.api.main, backend.db.api_role, backend.scripts.fact_pairs
+          import backend.analysis.verbs, backend.pipeline
           print('all pipeline modules import')
           "
 
@@ -94,6 +96,40 @@ jobs:
 
       - name: Targeted tone - safe fallback, evaluation arithmetic
         run: python -m backend.scripts.test_targeted
+
+      - name: Web API - routes, bad input, rate limits, failing safely
+        run: python -m backend.scripts.test_api
+
+  frontend:
+    # The React interface: types, the component and page tests (Vitest, against a
+    # fake API, so no database), and a production build. The end-to-end tests
+    # need the real database and run locally (npm run e2e).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install exactly what the lockfile pins
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Components and pages
+        run: npm test
+
+      - name: Production build
+        run: npm run build
 
   schema:
     # Proves the repository can build its own database from nothing. The base
@@ -144,7 +180,7 @@ jobs:
           cur.execute("""SELECT table_name FROM information_schema.tables
                          WHERE table_schema='public' ORDER BY 1""")
           tables = [r[0] for r in cur.fetchall()]
-          expected = ["articles", "cluster_analysis", "cluster_members", "clusters"]
+          expected = ["articles", "cluster_analysis", "cluster_members", "clusters", "people"]
           assert tables == expected, f"expected {expected}, got {tables}"
 
           cur.execute("""SELECT format_type(atttypid, atttypmod) FROM pg_attribute
@@ -158,4 +194,16 @@ jobs:
               ("[" + ",".join(["0.1"] * 384) + "]",))
           con.commit()
           print(f"schema bootstrap OK: {tables}")
+
+          # the API's own account reads and cannot write
+          from backend.db.api_role import ROLE, apply
+          apply(cur, "ci-throwaway-password")
+          cur.execute(f"SET LOCAL ROLE {ROLE}")
+          cur.execute("SELECT count(*) FROM articles")
+          try:
+              cur.execute("DELETE FROM articles")
+          except psycopg2.errors.InsufficientPrivilege:
+              print("API account: reads, and cannot write")
+          else:
+              raise SystemExit("the API's account was able to write")
           PY

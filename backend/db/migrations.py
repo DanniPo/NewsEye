@@ -173,6 +173,30 @@ MIGRATIONS = [
         CREATE UNIQUE INDEX IF NOT EXISTS cluster_analysis_cluster_id_key
             ON cluster_analysis (cluster_id)
     """),
+    # Which of a story's articles could be read on the last deep pass: each
+    # article's source, title, url and whether its text was fetched. The static
+    # site got this from the run itself; the API serves stored analyses, and
+    # without it cannot mark an outlet "could not open". Empty until a story is
+    # next analysed.
+    ("cluster_analysis.articles", """
+        ALTER TABLE cluster_analysis ADD COLUMN IF NOT EXISTS articles jsonb
+    """),
+    # How each outlet presents each listed person, for the API's people pages.
+    # Computed in a batch (python -m backend.people) because one person takes
+    # seconds to portray; replaced whole on every build.
+    ("table: people", """
+        CREATE TABLE IF NOT EXISTS people (
+            id           text PRIMARY KEY,
+            name         text NOT NULL,
+            aliases      jsonb NOT NULL DEFAULT '[]',
+            articles     integer NOT NULL,
+            outlets      jsonb NOT NULL,
+            totals       jsonb NOT NULL,
+            period_first timestamptz,
+            period_last  timestamptz,
+            built_at     timestamptz NOT NULL DEFAULT now()
+        )
+    """),
 ]
 
 # Early development left a second HNSW index on the same column under a

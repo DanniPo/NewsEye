@@ -100,7 +100,7 @@ NLI_MODEL = ZERO_SHOT_MODEL
 # P(entailment) at or above this counts as "implies"
 NLI_ENTAILS = 0.5
 # Check each coverage-table match with NLI. Similarity alone merged different
-# facts in 17 of 30 hand-checked cross-outlet pairs; see analysis/consensus.py.
+# facts in 17 of 30 cross-outlet pairs checked by Claude; see analysis/consensus.py.
 CLAIM_MATCH_NLI = True
 
 # --- quotes (active tier) ---
@@ -169,6 +169,11 @@ NEWSMTSC_PYTHON = os.environ.get("NEWSMTSC_PYTHON") or os.path.join(
 # repository: it holds headline text.
 TARGETED_CACHE = os.environ.get("TARGETED_CACHE") or os.path.join(
     os.path.expanduser("~"), ".cache", "newseye", "targeted_scores.jsonl")
+# Weights for GRU-TSC other than the published ones: a state_dict file from
+# fine-tuning on Kenyan news (backend/eval/finetune_framing.py). Unset, the worker
+# uses NewsSentiment's own weights. Scores from different weights never share a
+# cache entry.
+NEWSMTSC_STATE_DICT = os.environ.get("NEWSMTSC_STATE_DICT") or None
 
 # --- Kenyan entities (names, institutions, places) ---
 # spaCy's small English model, named here so it is never a library default. It

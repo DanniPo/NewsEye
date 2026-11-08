@@ -94,15 +94,16 @@ def save_analysis(cluster_id, result, sources_used):
         cur.execute("""
             INSERT INTO cluster_analysis
                 (cluster_id, consensus, subject,
-                 framing, figure_digest, quotes, sources_used,
+                 framing, figure_digest, quotes, articles, sources_used,
                  summary_model, sentiment_model, analyzed_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
             ON CONFLICT (cluster_id) DO UPDATE SET
                 consensus = EXCLUDED.consensus,
                 subject = EXCLUDED.subject,
                 framing = EXCLUDED.framing,
                 figure_digest = EXCLUDED.figure_digest,
                 quotes = EXCLUDED.quotes,
+                articles = EXCLUDED.articles,
                 sources_used = EXCLUDED.sources_used,
                 summary_model = EXCLUDED.summary_model,
                 sentiment_model = EXCLUDED.sentiment_model,
@@ -114,6 +115,9 @@ def save_analysis(cluster_id, result, sources_used):
               json.dumps(result.get("framing") or [], default=str),
               json.dumps(result.get("figure_digest") or [], default=str),
               json.dumps(result.get("quotes") or [], default=str),
+              # which articles were read, so a stored analysis can still mark
+              # an outlet "could not open" rather than as leaving facts out
+              json.dumps(result.get("articles") or [], default=str),
               sources_used, TITLE_SUMMARY_MODEL, SENTIMENT_MODEL))
 
 def analyze_cluster(cluster_id, refresh=False):
@@ -216,9 +220,10 @@ def _run_deep_analysis(cluster_id):
     result = {"title_summary": title_summary, "consensus": groups,
               "subject": subject, "framing": framing, "figure_digest": digest,
               "quotes": remarks,
-              # Not stored: which articles could be read exists only for this
-              # run, since the text itself is discarded. The static site needs
-              # it to mark outlets "could not read" rather than as omitting.
+              # Which articles could be read: the text itself is discarded, but
+              # the flags are stored (cluster_analysis.articles) so that the
+              # site and the API can mark outlets "could not read" rather than
+              # as omitting.
               "topic_label": cluster["topic_label"], "coherence": coherence,
               "retrieved": got,
               "articles": [{"source": a["source_name"], "title": a["title"],
