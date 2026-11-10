@@ -16,6 +16,7 @@ a stand-in for the function that would have failed.
     python -m backend.scripts.test_robustness
 """
 import io
+import re
 import sys
 from contextlib import contextmanager, redirect_stdout
 
@@ -118,6 +119,52 @@ def coherence_floor():
     return case("[boundary] the loose-cluster warning starts below 0.50 coherence",
                 "0.50: no warning; 0.49: warning", got,
                 warned == {0.50: False, 0.49: True})
+
+
+def category_section():
+    from backend.scripts.build_site import categories_section, story_tile
+    clusters = [{"topic_label": t} for t in ("General", "General", "General", "Sports", "Politics",
+                                             "Politics", "<b>Odd</b>")] + [{"topic_label": None}]
+    html_out = categories_section(clusters)
+    order = re.findall(r'data-topic="([^"]*)"', html_out)
+    tile = story_tile(story("A story", [article("KBC", "A", "https://kbc.co.ke/a"),
+                                        article("Nation Africa", "B", "https://nation.africa/b")]))
+    one_topic = categories_section([{"topic_label": "Sports"}, {"topic_label": "Sports"}])
+    expected = ["", "Politics", "&lt;b&gt;Odd&lt;/b&gt;", "Sports", "General"]
+    got = (f"{order}; All counts {'8 stories' if '8 stories' in html_out else 'wrong'}; "
+           f"General {'4 stories' if '4 stories' in html_out else 'wrong'}; "
+           f"card {'has' if 'data-topic=' in tile else 'lacks'} its category; "
+           f"one topic: {'no section' if not one_topic else 'section'}")
+    return case("[boundary] categories: most stories first, General last, markup escaped",
+                f"{expected}; All counts 8 stories; General 4 stories; card has its category; "
+                "one topic: no section", got,
+                order == expected and "8 stories" in html_out and "4 stories" in html_out
+                and "<b>Odd" not in html_out and "data-topic=" in tile and not one_topic)
+
+
+def fact_pair_estimate():
+    from backend.scripts.fact_pairs import draw, estimate
+
+    # the 8 October sample: NLI kept 12 of 64 pairs and split 52; 10 and 20 were marked
+    rows = ([{"kept": True, "one_fact": i < 9} for i in range(10)]
+            + [{"kept": False, "one_fact": i < 4} for i in range(20)])
+    found = estimate(rows, {"kept": 12, "split": 52})
+    pool = ([{"story": s, "kept": True} for s in range(4) for _ in range(5)]
+            + [{"story": s, "kept": False} for s in range(4) for _ in range(5)])
+    chosen = draw(pool, 16, seed=1)
+    per_story = max(sum(r["story"] == s and r["kept"] == k for r in chosen)
+                    for s in range(4) for k in (True, False))
+    got = (f"kept {found['kept']}, split {found['split']}, similarity alone "
+           f"{found['similarity_alone']:.0%}, real matches kept {found['real_matches_kept']:.0%}; "
+           f"draw {sum(r['kept'] for r in chosen)} kept, {sum(not r['kept'] for r in chosen)} split, "
+           f"at most {per_story} per story and group")
+    return case("[boundary] fact pairs: scores weighted back to all pairs; the draw is balanced and capped",
+                "kept (9, 10), split (4, 20), similarity alone 33%, real matches kept 51%; "
+                "draw 8 kept, 8 split, at most 3 per story and group", got,
+                found["kept"] == (9, 10) and found["split"] == (4, 20)
+                and round(found["similarity_alone"], 2) == 0.33
+                and round(found["real_matches_kept"], 2) == 0.51
+                and sum(r["kept"] for r in chosen) == 8 and len(chosen) == 16 and per_story <= 3)
 
 
 # --- exception ---------------------------------------------------------------
@@ -265,13 +312,58 @@ TRACE = [
 ]
 
 
+def pipeline_rules():
+    """The scheduled pipeline (backend/pipeline.py): people pages once a day, no
+    overlapping runs, and a failed stage that stops nothing after it."""
+    from datetime import UTC, datetime, timedelta
+    from unittest import mock
+
+    from backend import pipeline
+
+    now = datetime(2026, 11, 8, 12, tzinfo=UTC)
+    due = [pipeline.due_after(None, now)[0], pipeline.due_after(now - timedelta(hours=30), now)[0],
+           pipeline.due_after(now - timedelta(hours=3), now)[0]]
+    ran = []
+    with mock.patch.object(pipeline, "acquire_lock", return_value=None),             mock.patch.object(pipeline, "stage", side_effect=lambda name, *a, **k: ran.append(name)),             redirect_stdout(io.StringIO()):
+        busy = pipeline.run()
+
+    class Lock:
+        closed = False
+
+        def close(self):
+            Lock.closed = True
+
+    def stage(name, module, *args, timeout):
+        ran.append(module)
+        return module != "backend.passive", 1.0      # collecting fails, the rest work
+
+    with mock.patch.object(pipeline, "acquire_lock", return_value=Lock()),             mock.patch.object(pipeline, "stage", side_effect=stage),             mock.patch.object(pipeline, "people_due", return_value=(True, "a day old")),             redirect_stdout(io.StringIO()):
+        failed = pipeline.run()
+    ok = (due == [True, True, False] and busy == 0
+          and ran == ["backend.passive", "backend.active", "backend.people"]
+          and failed == 1 and Lock.closed)
+    return case("scheduled pipeline: people daily, no overlap, a failed stage stops nothing",
+                "due never/30h/3h: yes, yes, no; overlapping run does nothing; "
+                "after a failed collection still compares and rebuilds people, exits 1, "
+                "releases the lock",
+                f"due {due}; overlapping run exit {busy}; stages run {ran}; exit {failed}; "
+                f"lock released {Lock.closed}", ok)
+
+
 def results():
     rows = []
     for check, requirement in TRACE:
         row = check()
         row["trace"] = requirement
         rows.append(row)
-    return rows + empty_inputs()
+    # last, so that the case ids the report cites (TC-RB-01 to -16) stay as they are
+    added = category_section()
+    added["trace"] = "FR-09"
+    pairs = fact_pair_estimate()
+    pairs["trace"] = "FR-04"
+    scheduled = pipeline_rules()
+    scheduled["trace"] = "FR-01, NFR-02"
+    return rows + empty_inputs() + [added, pairs, scheduled]
 
 
 if __name__ == "__main__":

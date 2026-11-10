@@ -5,7 +5,8 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 DB_CONFIG = {
-    "dbname": "articles",
+    # DB_NAME points every stage at another database, e.g. a copy for testing
+    "dbname": os.environ.get("DB_NAME", "articles"),
     "user": "postgres",
     "password": os.environ.get("DB_PASSWORD", ""),
     "host": "localhost",

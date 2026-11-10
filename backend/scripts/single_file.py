@@ -20,7 +20,7 @@ import re
 
 # ids the page scripts look up by name; every other id is namespaced per page
 SCRIPT_IDS = {"q", "shown", "nores", "sform", "sq", "sstatus", "sresults"}
-LOCAL_PAGE = re.compile(r"^(index|people|search|story-\d+|person-[a-z0-9-]+)\.html(?:#([\w-]+))?$")
+LOCAL_PAGE = re.compile(r"^(index|contested|people|search|story-\d+|person-[a-z0-9-]+)\.html(?:#([\w-]+))?$")
 
 ROUTER = """<script>
 (function(){
@@ -99,7 +99,7 @@ def section(filename, html, index_js):
 
 def bundle(site, out):
     pages = sorted(f for f in os.listdir(site) if f.endswith(".html"))
-    order = ["index.html", "people.html", "search.html"]
+    order = ["index.html", "contested.html", "people.html", "search.html"]
     pages = [p for p in order if p in pages] + [p for p in pages if p not in order]
     index_path = os.path.join(site, "search-index.js")
     index_js = open(index_path, encoding="utf-8").read() if os.path.exists(index_path) else ""

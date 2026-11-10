@@ -23,38 +23,15 @@ Contention: the share of its headlines with a critical or defensive verb
     python -m backend.scripts.export_review <the ids it prints> --note showcase
 """
 import argparse
-import re
 from functools import lru_cache
 
 import numpy as np
 
+from backend.analysis.contention import contested_quotes, headline_score
 from backend.analysis.divergence import differences
-from backend.config import CLUSTER_MIN_COHERENCE, REPORTING_VERBS
+from backend.config import CLUSTER_MIN_COHERENCE
 from backend.db.connection import get_cursor
 
-CONTESTED = ("criticised", "denied or defended")
-
-
-def _verb_pattern(verb):
-    """'accuse' matches accuses/accused; 'hit back' only as a phrase, never bare
-    'hits' - which matched "milk output hits 5.2B litres"."""
-    first, _, rest = verb.partition(" ")
-    stem = re.escape(first) + r"\w{0,4}"
-    return stem + (r"\s+" + re.escape(rest) if rest else "")
-
-
-CONFLICT = re.compile(r"\b(" + "|".join(_verb_pattern(v) for family in CONTESTED
-                                       for v in REPORTING_VERBS[family]) + r")\b", re.I)
-# Controversy also shows in what a headline is about, not only in who "slams"
-# whom: a probe, a row, an arrest. Verbs alone left nearly every story at zero.
-CONTROVERSY = re.compile(
-    r"\b(rows?|disputes?|disputed|clash(es|ed)?|protests?|protesters|impeach\w*|probes?|"
-    r"probed|scandals?|petitions?|arrest(s|ed)?|murder(s|ed)?|kill(s|ed|ings?)?|crackdown|"
-    r"ultimatum|rift|feud|showdown|war|attacks?|attacked|standoff|outcry|backlash|fraud|"
-    r"corruption|graft|sack(s|ed)?|suspend(s|ed)?|ousts?|ousted|defy|defies|condemns?|"
-    r"condemned|demands?|warns?|threat(s|ens)?|bans?|banned|evict\w*|demoli\w*|"
-    r"court|charged|accused|controversy|controversial|uproar|fury|anger)\b", re.I)
-CONTESTED_TOPICS = {"Politics", "Security"}
 FEATURES = ("related", "figures", "quotes", "reworded", "framing", "people")
 # two picked stories this alike are one event told twice
 SAME_EVENT = 0.75
@@ -81,17 +58,11 @@ def stories():
 
 
 def headline_contention(story):
-    """Share of headlines that report a dispute, plus a quarter for a political
-    or security story."""
-    disputed = sum(1 for t in story["titles"] if CONFLICT.search(t) or CONTROVERSY.search(t))
-    topic = 0.25 if story.get("topic_label") in CONTESTED_TOPICS else 0.0
-    return disputed / len(story["titles"]) + topic
+    return headline_score(story["titles"], story.get("topic_label"))
 
 
 def features(story, people_ids):
     """{feature: bool} and the contention score for an analysed story."""
-    from backend.analysis.portrayal import family_of
-
     found = differences(story)
     remarks = story["quotes"] or []
     shared = [r for r in remarks if r["outlets"] > 1]
@@ -105,9 +76,7 @@ def features(story, people_ids):
         "framing": bool(framing),
         "people": bool(speakers & people_ids) or bool(_named(story) & people_ids),
     }
-    contested_quotes = sum(1 for r in remarks for v in r["versions"]
-                           if family_of(v.get("verb")) in CONTESTED)
-    return flags, headline_contention(story) + 0.25 * contested_quotes, found
+    return flags, headline_contention(story) + 0.25 * contested_quotes(remarks), found
 
 
 @lru_cache(maxsize=1)

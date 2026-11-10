@@ -223,11 +223,12 @@ def _run_deep_analysis(cluster_id):
               # Which articles could be read: the text itself is discarded, but
               # the flags are stored (cluster_analysis.articles) so that the
               # site and the API can mark outlets "could not read" rather than
-              # as omitting.
+              # as omitting. The dates let the site list the latest stories.
               "topic_label": cluster["topic_label"], "coherence": coherence,
               "retrieved": got,
               "articles": [{"source": a["source_name"], "title": a["title"],
-                            "url": a["url"], "fetched": bool(b)}
+                            "url": a["url"], "fetched": bool(b),
+                            "published": a["published_utc"]}
                            for a, b in zip(articles, bodies, strict=True)]}
     save_analysis(cluster_id, result, got)
     set_status(cluster_id, ANALYSIS_DEEP_READY)

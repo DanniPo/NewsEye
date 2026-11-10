@@ -1,7 +1,7 @@
 """Does the coverage table credit an outlet only with what it actually said?
 
 Every pair below was grouped as "the same fact" by embedding similarity on a
-real story, then checked by hand. Similarity alone credited Capital FM with KBC's
+real story, then checked by Claude. Similarity alone credited Capital FM with KBC's
 fact about the Ebola patient's citizenship when it had reported the patient's
 route instead. With NLI checking each match, such an outlet is "related": shown
 with its own sentence, neither credited nor counted as leaving the fact out.

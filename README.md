@@ -37,9 +37,10 @@ negative results shaped everything that followed:
   NLI read both ways. An outlet whose sentence is close but not the same is
   shown as *said something related*, with its sentence, and is neither
   credited nor counted as omitting. On the sample: wrong merges 17 to 1, false
-  omissions none. Of the pairs still grouped, 9 of 10 are one fact, and 4 of the 13
-  real matches became "related". `backend/scripts/fact_pairs.py` draws a fresh sample
-  for a person to mark.
+  omissions none. On a fresh sample of 30 pairs in full sentences, marked by the
+  developer, 14 of 15 that NLI keeps are one fact (93%), but NLI is strict: it keeps
+  only about 31% of real matches together and shows the rest as "related", never
+  as left out (`docs/evidence/fact-pairs/`).
 - **Abstractive summarisation misspelled Kenyan names** in 77 of 149 summaries
   ("Ruti" for Ruto, "Karuta" for Karua). Replaced with extractive selection: the
   member headline closest to the cluster centroid. Nothing is generated, so

@@ -1,0 +1,6 @@
+# installed packages and build output: recreate with `npm ci` and `npm run build`
+node_modules/
+dist/
+# Playwright's reports and traces of failed runs
+test-results/
+playwright-report/

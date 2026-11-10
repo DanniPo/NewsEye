@@ -34,11 +34,11 @@ import html
 import re
 from collections import Counter, defaultdict
 
+from backend.analysis.verbs import family_of
 from backend.config import (
     FRAMING_SENTIMENT,
     FRAMING_TARGETED_THRESHOLD,
     NAME_TITLES,
-    REPORTING_VERBS,
     TARGETED_ENT_TYPES,
 )
 from backend.db.connection import get_cursor
@@ -47,7 +47,6 @@ from backend.nlp.truecase import build_casing_lexicon, is_title_case, truecase
 
 ROLES = ("speaks", "acts", "acted on", "described", "spoken about", "mentioned")
 QUOTED = "quoted directly"
-FAMILY = {verb: family for family, verbs in REPORTING_VERBS.items() for verb in verbs}
 # "Kalonzo: Uhuru was right" - a short head naming a speaker, then their words
 COLON_HEAD = re.compile(r"^\s*([^:]{2,60}?)\s*:\s+\S")
 DOUBLE_QUOTE = re.compile(r"[“\"]([^“”\"]{2,})[”\"]")
@@ -83,17 +82,6 @@ MODIFIERS = {"former", "ex", "outgoing", "incoming", "acting", "late", "embattle
 # spaCy misreads a curly possessive: "joining Gachagua’s DCP" made Gachagua the
 # one being joined. One character for one, so text positions do not move.
 CURLY_POSSESSIVE = re.compile(r"(?<=\w)\u2019(?=s\b)")
-
-
-def family_of(phrase):
-    """The REPORTING_VERBS group for a verb phrase, if it reports speech."""
-    if not phrase:
-        return None
-    words = phrase.split()
-    for candidate in (phrase, " ".join(words[:2]), words[0]):
-        if candidate in FAMILY:
-            return FAMILY[candidate]
-    return None
 
 
 def verb_phrase(verb):

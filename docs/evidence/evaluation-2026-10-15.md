@@ -17,6 +17,10 @@ Each sample was drawn and marked by hand while the component was being built, so
 | Portrayal | role right for a headline mention | - | - | 34/40 = 85% (71%-93%) | Random sample of 40. |
 | Story summaries | summaries with every name spelled right | abstractive model | 72/149 = 48% (40%-56%) | - | Replaced by an extractive headline, which copies names and cannot misspell them. |
 
+**Correction, 6 November 2026: who judged these.** They were not marked by hand. Claude judged the fact pairs, quote speakers and portrayal roles, and scripts counted the two name rows.
+
+**Correction, 6 November 2026.** The coverage-table row above should read: pairs still grouped as one fact that are one fact, similarity alone 13/30 = 43% (27%-61%), with NLI 9/10 = 90% (60%-98%). The 29/30 counted every pair that was not a wrong merge, including the 20 NLI no longer groups. The pairs are in [fact-pairs/](fact-pairs/). The figure below is redrawn with the corrected value.
+
 Story ordering: number of outlets against checkable differences, Spearman ρ = +0.40 (95% CI +0.17 to +0.59, p = 0.001, n = 63 stories).
 
 ![Development accuracy against baselines](../figures/fig-dev-accuracy.png)

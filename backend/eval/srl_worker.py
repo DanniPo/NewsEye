@@ -3,6 +3,7 @@
 AllenNLP 2.10 needs Python <= 3.10, torch < 1.13 and spaCy < 3.4, none of which
 Newseye's environment can have, so this runs under ~/.venvs/srl and imports
 nothing from Newseye - the same arrangement as analysis/tsc_worker.py.
+eval/roles/srl-requirements.txt lists that environment and how to rebuild it.
 
 One JSON request per line on stdin, one answer per line on stdout:
 

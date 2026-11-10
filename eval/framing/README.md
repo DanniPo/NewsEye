@@ -295,3 +295,46 @@ them.
 
 `FRAMING_SENTIMENT=sentence` in the environment switches back without editing
 any code.
+
+## 8. Fine-tuning on Kenyan labels (optional)
+
+GRU-TSC was trained on US and UK news. Fine-tuning it on labelled Kenyan
+mentions may help with headline grammar, Kenyan names and local context.
+`backend/eval/finetune_framing.py` does it in four steps. The training labels
+are separate from the evaluation sample, which stays unseen.
+
+```bash
+python -m backend.eval.finetune_framing pool --n 400        # draw mentions to label
+#   label eval/framing/finetune/sheet.csv (-3..3 or x, the guide above)
+python -m backend.eval.finetune_framing build   --run r1     # sheet -> NewsMTSC format
+python -m backend.eval.finetune_framing train   --run r1     # ~20 min per 1,000 mentions on the GPU
+python -m backend.eval.finetune_framing compare --run r1     # published vs tuned, writes compare-r1.md
+```
+
+**pool**
+
+- Skips every article and text in `sample.csv`.
+- Half the items are mentions the current model scores as polar, so the
+  training set is not almost all neutral.
+- Run it again to add more items to the same sheet. Labels already written
+  are kept.
+
+**train**
+
+- Starts from the whole published model. NewsSentiment's own trainer resets
+  everything except RoBERTa before the first step, so the launcher
+  `newsmtsc_train.py` turns that reset off.
+- Keeps only the best checkpoint (612 MB).
+
+**compare**
+
+- Scores both sets of weights on the evaluation sample's PERSON items and on
+  the NewsMTSC test sets (a check on forgetting).
+- Applies a decision rule fixed before any tuned model was scored.
+- Uses `gold.csv` labels when they exist. Before then it uses `sheet_A.csv`
+  and calls the result provisional.
+
+To use tuned weights, set `NEWSMTSC_STATE_DICT` to the checkpoint and
+`FRAMING_TARGETED_THRESHOLD` to the tuned threshold the report gives. The
+cache keys scores by weights, so the next build rescores headlines once.
+Unset `NEWSMTSC_STATE_DICT` to go back.
