@@ -7,6 +7,7 @@ from somebody, so counting omissions would rank every story the same.
     python -m backend.scripts.test_divergence
 """
 import sys
+from unittest import mock
 
 from backend.analysis.divergence import differences
 from backend.scripts.testkit import case, fields, report
@@ -56,6 +57,21 @@ def results():
         got = differences(analysis)
         actual = {key: got[key] for key in wanted}
         rows.append(case(name, fields(wanted), fields(actual), actual == wanted))
+
+    # last, so the case ids cited elsewhere stay as they are. Counting figure
+    # groups needs no ordering by meaning, so it must not load the language model:
+    # it did, and the first story list after the API started took 19 s (DEF-46)
+    def no_model(members):
+        raise AssertionError("the figure groups were ordered by meaning just to be counted")
+
+    with mock.patch("backend.analysis.digest.rank_by_similarity", side_effect=no_model):
+        try:
+            got = differences({"figure_digest": [figure("Nation", 47, "47"), figure("KBC", 52, "52")]})
+            actual, ok = f"different figures in {got['figures']} group, model not loaded", got["figures"] == 1
+        except AssertionError as exc:
+            actual, ok = str(exc), False
+    rows.append(case("counting differences does not load the language model (DEF-46)",
+                     "different figures in 1 group, model not loaded", actual, ok))
     return rows
 
 

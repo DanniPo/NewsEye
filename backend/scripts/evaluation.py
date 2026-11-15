@@ -2,11 +2,11 @@
 
     python -m backend.scripts.evaluation
 
-Reads the development hand-checks recorded below, every passive run in
+Reads the development checks recorded below, every passive run in
 logs/passive.log, and the clusters in the database, and writes
 docs/evidence/evaluation-<date>.md with the figures in docs/figures/.
 
-The hand-checks are development samples: each one was taken while the code was
+The checks are development samples: each one was taken while the code was
 being fixed, so it measures the system on data that shaped it. The held-out
 results (heldout.py) are the ones that measure it on data it never saw.
 """
@@ -34,10 +34,18 @@ DEV_SAMPLES = [
      "Same 522 mentions before and after; in-sample, because the list was built from "
      "this corpus. Counts reconstructed from 26% and 98%."),
     ("Kenyan names in headlines", "unlisted names after a title tagged as people",
-     "without the title rule", (84, 102), (95, 102), "12 gained, 1 lost."),
-    ("Coverage table", "cross-outlet pairs grouped as one fact that are one fact",
-     "similarity alone", (13, 30), (29, 30),
-     "Same 30 pairs; false omissions 0 after."),
+     "without the title rule", (84, 102), (95, 102),
+     "12 gained, 1 lost. Counted by a script: a title followed by capitalised words, tagged "
+     "PERSON or not. Nobody checked that each was a person."),
+    # This row once gave 29 of 30, which counted every pair that was not a wrong
+    # merge, including the 20 NLI no longer groups: not the measure it was named as.
+    ("Coverage table", "pairs still grouped as one fact that are one fact",
+     "similarity alone", (13, 30), (9, 10),
+     "Same 30 pairs, judged by Claude from their first 150 characters: 20 of the 52 NLI "
+     "split and 10 of the 12 it kept (docs/evidence/fact-pairs/). Wrong merges 17 to 1. "
+     "4 of the 13 real matches became related, none omitted. The developer's check of "
+     "30 fresh pairs found 12 of 15 split pairs to be real matches "
+     "(fact-pairs-results-2026-11-09.md)."),
     ("Quote speakers", "speaker right, first sample", None, None, (24, 30),
      "Successive samples after successive fixes."),
     ("Quote speakers", "speaker right, second sample (attributed)", None, None, (19, 21), ""),
@@ -202,10 +210,11 @@ def main():
              "Regenerate with `python -m backend.scripts.evaluation`. Intervals are 95% "
              "Wilson score intervals for proportions and a Fisher z interval for the rank "
              "correlation.", "",
-             "## Development hand-checks", "",
-             "Each sample was drawn and marked by hand while the component was being built, "
-             "so each measures the system on data that shaped it. They show the effect of "
-             "each change against its baseline; they are not held-out results.", "",
+             "## Development checks", "",
+             "Each sample was drawn while the component was being built, so each measures the "
+             "system on data that shaped it. Claude judged the fact pairs, quote speakers and "
+             "portrayal roles; scripts counted the two name rows. They show the effect of each "
+             "change against its baseline; they are not held-out results.", "",
              "| Task | Measure | Baseline | Before | Newseye | Note |",
              "|---|---|---|---|---|---|"]
     for task, measure, base_name, before_kn, after_kn, note in DEV_SAMPLES:
@@ -217,7 +226,7 @@ def main():
                   f"Spearman ρ = +{ORDERING['rho']:.2f} (95% CI {low:+.2f} to {high:+.2f}, "
                   f"p = {ORDERING['p']}, n = {ORDERING['n']} stories).", "",
               "![Development accuracy against baselines](../figures/fig-dev-accuracy.png)", "",
-              "*Figure: development hand-checks, baseline against Newseye, with 95% "
+              "*Figure: development checks, baseline against Newseye, with 95% "
               "intervals. The name result is in-sample.*", ""]
 
     lines += ["## Performance over repeated runs (NFR-01)", "",

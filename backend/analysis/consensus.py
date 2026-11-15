@@ -8,16 +8,19 @@ fact. Then it is set arithmetic, with no model making any judgement:
     related       outlets whose claim is close but says something else
     omitted_by    outlets we could read that have no claim in the group
 
-Closeness alone merged different facts. In a hand-checked sample of 30
-cross-outlet pairs it had grouped, 17 were different facts: the Health CS saying
+Closeness alone merged different facts. In a sample of 30 cross-outlet pairs it
+had grouped, checked by Claude, 17 were different facts: the Health CS saying
 the Ebola patient was a Kenyan citizen, filed as the same fact as the CS
 describing the patient's route through Uganda. Each pair is now also put to
 NLI (backend/nlp/nli.py), read both ways. If neither sentence implies the
 other, the outlet is "related": shown with its own sentence, neither credited
-with the fact nor counted as leaving it out. NLI wrongly splits about one pair
-in five that does share a fact - "Sale 42 on September 29" told with different
-details - and the related state is what keeps those from becoming false
-omissions. On the sample: wrong merges 17 to 1, false omissions none.
+with the fact nor counted as leaving it out. On that sample wrong merges fell
+from 17 to 1, and some pairs NLI split still shared a fact: "Sale 42 on
+September 29" told with different details. On a fresh sample in full sentences,
+marked by the developer, 14 of 15 pairs NLI keeps are one fact, but 12 of 15 it
+splits share a fact too, so most real matches end up related
+(docs/evidence/fact-pairs/). The related state is what keeps those from
+becoming false omissions.
 
 Outlets we could not read at all are in neither list, which is what keeps the
 omission column honest. An outlet whose article was paywalled or blocked produced

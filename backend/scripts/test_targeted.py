@@ -274,9 +274,30 @@ def agree_case():
                 first == wanted_first and second["F002"] == ("settled", "negative"), "FR-07")
 
 
+def people_report_case():
+    from backend.eval.score_framing import people_section
+
+    def row(gold, targeted, sentence, kind="PERSON"):
+        return {"gold": gold, "targeted": targeted, "sentence": sentence, "entity_type": kind}
+
+    # targeted right on every person and sentence wrong on the positives; the places
+    # are wrong for both, and must not count
+    people = ([row("positive", 0.9, 0.0)] * 4 + [row("negative", -0.9, -0.9)] * 4
+              + [row("neutral", 0.0, 0.0)] * 4)
+    places = [row("positive", -0.9, -0.9, "GPE")] * 6
+    text = "\n".join(people_section(people + places, people + places))
+    too_few = people_section(people[:3], people[:3])
+    got = (f"{'12 people' if '12 people:' in text else 'wrong count'}; "
+           f"targeted {'1.000' if '| 1.000 (' in text else 'not 1.000'}; "
+           f"too few: {'nothing' if not too_few else 'a table'}")
+    return case("[report] the people-only section counts people alone, and needs enough of them",
+                "12 people; targeted 1.000; too few: nothing", got,
+                "12 people:" in text and "| 1.000 (" in text and not too_few, "FR-07")
+
+
 def results():
     return (client_cases() + framing_cases() + [claims_case()] + metric_cases()
-            + sampler_cases() + [agree_case()])
+            + sampler_cases() + [agree_case(), people_report_case()])
 
 
 if __name__ == "__main__":

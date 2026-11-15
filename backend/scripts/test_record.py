@@ -32,7 +32,7 @@ SUITES = [
                 "institutions and places"},
     {"module": "test_coverage", "prefix": "TC-CV", "component": "Analysis - coverage",
      "trace": "FR-04, NFR-04", "level": "Integration (MiniLM + NLI + set arithmetic) · "
-                                        "black-box: hand-checked real pairs",
+                                        "black-box: real pairs checked by Claude",
      "meaning": "An outlet is credited only with a fact it actually reported"},
     {"module": "test_quotes", "prefix": "TC-QT", "component": "Analysis - quotes",
      "trace": "FR-05", "level": "Unit · black-box: the attribution forms outlets use",
@@ -65,6 +65,12 @@ SUITES = [
                                          "injected at known dependencies",
      "meaning": "Thresholds, failures, hostile feed content and empty input are handled "
                 "as documented"},
+    {"module": "test_api", "prefix": "TC-AP", "component": "Output - web API",
+     "trace": "NFR-03", "level": "Integration · black-box: requests through FastAPI's test "
+                                "client against a fake data layer; boundary values and "
+                                "hostile input",
+     "meaning": "The API answers correctly, refuses bad input before the database, limits "
+                "request rates and reveals nothing when it fails"},
 ]
 DEFAULT_DIR = os.path.join("docs", "evidence")
 

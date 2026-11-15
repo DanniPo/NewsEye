@@ -34,331 +34,465 @@ import json
 import os
 import re
 from collections import Counter, defaultdict
+from datetime import datetime, timedelta
 
 from backend.analysis.digest import digest_groups, summarise
 from backend.config import RSS_FEEDS
 from backend.ingestion.dedupe import is_web_url
 
 CSS = """
-:root{--bg:#F4F6F8;--panel:#FFFFFF;--rail:#0E1B2A;--rail-2:#16283C;--ink:#16202B;
---muted:#667585;--faint:#93A0AD;--rule:#E4E9EE;--accent:#12B39B;--accent-soft:#E2F7F3;
---gap:#C2571E;--gap-soft:#FDF0E6;--ok:#1F7A55;--ok-soft:#E6F4EC;--violet:#6E56CF;
---serif:"Newsreader",Georgia,serif;--sans:"Source Sans 3",ui-sans-serif,system-ui,sans-serif}
-@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0B1219;
---panel:#131D27;--rail:#0A121B;--rail-2:#16242F;--ink:#E7ECF1;--muted:#93A0AD;
---faint:#6B7885;--rule:#22303C;--accent:#3FD3BA;--accent-soft:#12312C;--gap:#E0954F;
---gap-soft:#33240F;--ok:#57B98A;--ok-soft:#12301F;--violet:#A797F0}}
-:root[data-theme=dark]{--bg:#0B1219;--panel:#131D27;--rail:#0A121B;--rail-2:#16242F;
---ink:#E7ECF1;--muted:#93A0AD;--faint:#6B7885;--rule:#22303C;--accent:#3FD3BA;
---accent-soft:#12312C;--gap:#E0954F;--gap-soft:#33240F;--ok:#57B98A;--ok-soft:#12301F;
---violet:#A797F0}
+:root{--bg:#F5F7F0;--panel:#FFFFFF;--rail:#FFFFFF;--ink:#1A2B20;--muted:#4F5D53;
+--faint:#687469;--rule:#E2E8DC;--lime:#C9E265;--lime-ink:#3F5F0B;--lime-soft:#EEF5D6;
+--dark:#1D2B22;--on-dark:#FFFFFF;--gap:#94580A;--gap-soft:#FBEFD8;--ok:#256B41;
+--ok-soft:#E3F1E7;--blue:#2F6496;--blue-soft:#E6EEF7;--neg:#C2611F;--pos:#2F6EA5;
+--neu:#C9CFC5;--shadow:0 1px 2px rgba(26,43,32,.05);
+--sans:"Figtree",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0F1511;
+--panel:#161E18;--rail:#121915;--ink:#E5ECE3;--muted:#A9B5AB;--faint:#8F9C92;
+--rule:#27322A;--lime-ink:#CFE77A;--lime-soft:#253019;--dark:#C9E265;--on-dark:#142012;
+--gap:#E8AE55;--gap-soft:#33270F;--ok:#73C795;--ok-soft:#142A1C;--blue:#8DB8E6;
+--blue-soft:#162536;--neg:#E08A4E;--pos:#6FA6DA;--neu:#4A554C;--shadow:none}}
+:root[data-theme=dark]{--bg:#0F1511;--panel:#161E18;--rail:#121915;--ink:#E5ECE3;
+--muted:#A9B5AB;--faint:#8F9C92;--rule:#27322A;--lime-ink:#CFE77A;--lime-soft:#253019;
+--dark:#C9E265;--on-dark:#142012;--gap:#E8AE55;--gap-soft:#33270F;--ok:#73C795;
+--ok-soft:#142A1C;--blue:#8DB8E6;--blue-soft:#162536;--neg:#E08A4E;--pos:#6FA6DA;
+--neu:#4A554C;--shadow:none}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;
 line-height:1.55;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--lime-ink);outline-offset:2px;border-radius:6px}
 
 /* ---- shell ---- */
-.app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:100vh}
-.rail{background:var(--rail);color:#DCE5ED;padding:18px 14px;display:flex;
-flex-direction:column;gap:22px;position:sticky;top:0;height:100vh}
-.brand{display:flex;align-items:center;gap:9px;padding:4px 6px 0}
-.brand .glyph{width:30px;height:30px;border-radius:8px;background:var(--accent);
+.app{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
+.rail{background:var(--rail);border-right:1px solid var(--rule);padding:22px 14px 18px;
+display:flex;flex-direction:column;gap:28px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:11px;padding:0 6px}
+.brand .glyph{width:40px;height:40px;border-radius:11px;background:var(--lime);
 display:grid;place-items:center;flex:none}
-.brand .glyph svg{width:17px;height:17px;display:block}
-.brand b{font-size:16.5px;letter-spacing:-.01em;color:#fff;font-weight:700}
-nav{display:flex;flex-direction:column;gap:2px}
-nav a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;
-font-size:13.5px;color:#9FB0C0;font-weight:600}
-nav a svg{width:15px;height:15px;flex:none;opacity:.85}
-nav a:hover{background:var(--rail-2);color:#E8EFF5}
-nav a.on{background:var(--rail-2);color:#fff}
-nav a.on svg{opacity:1;color:var(--accent)}
+.brand .glyph svg{width:21px;height:21px;display:block}
+.brand b{display:block;font-size:19px;letter-spacing:-.02em;font-weight:700;line-height:1.1}
+.brand small{display:block;font-size:9.5px;font-weight:700;letter-spacing:.04em;
+text-transform:uppercase;color:var(--muted);margin-top:3px;white-space:nowrap}
+.rlabel{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+color:var(--muted);padding:0 10px;margin:0 0 8px}
+.rail nav{display:flex;flex-direction:column;gap:4px}
+.rail nav a{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:11px;
+font-size:14px;font-weight:500}
+.rail nav .ico{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;
+flex:none;background:var(--bg);border:1px solid var(--rule)}
+.rail nav svg{width:14px;height:14px}
+.rail nav a:hover{background:var(--bg)}
+.rail nav a.on{background:var(--lime-soft);font-weight:700}
+.rail nav a.on .ico{background:var(--lime);border-color:transparent;color:#1A2B20}
+.snap{margin-top:auto;background:var(--bg);border:1px solid var(--rule);border-radius:13px;
+padding:13px 14px;font-size:12px;color:var(--muted);line-height:1.5}
+.snap b{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink);margin-bottom:3px}
+.snap b::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--lime-ink)}
+.snap p{margin:0}
 
 .main{min-width:0;display:flex;flex-direction:column}
-.topbar{display:flex;gap:12px;align-items:center;padding:13px 22px;background:var(--panel);
-border-bottom:1px solid var(--rule);position:sticky;top:0;z-index:5}
-.search{flex:1;max-width:400px;display:flex;align-items:center;gap:8px;background:var(--bg);
-border:1px solid var(--rule);border-radius:8px;padding:7px 11px}
-.search svg{width:14px;height:14px;color:var(--faint);flex:none}
+.topbar{display:flex;gap:14px;align-items:center;padding:14px 32px;background:var(--bg);
+border-bottom:1px solid var(--rule);position:sticky;top:0;z-index:6;min-height:64px}
+.search{flex:1;max-width:420px;display:flex;align-items:center;gap:9px;background:var(--panel);
+border:1px solid var(--rule);border-radius:11px;padding:8px 13px}
+.search:focus-within{border-color:var(--lime-ink)}
+.search svg{width:14px;height:14px;color:var(--muted);flex:none}
 .search input{border:0;background:transparent;color:var(--ink);font:inherit;
 font-size:13.5px;width:100%;outline:none}
-.stamp{margin-left:auto;font-size:12.5px;color:var(--muted);border:1px solid var(--rule);
-border-radius:8px;padding:6px 11px;white-space:nowrap}
-.content{padding:20px 22px 64px;max-width:1220px}
+.stamp{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.04em;
+text-transform:uppercase;color:var(--lime-ink);background:var(--lime-soft);border-radius:20px;
+padding:6px 13px;white-space:nowrap}
+.content{padding:30px 32px 64px;max-width:1300px;width:100%}
 
-/* ---- what this site is for: the first thing on the dashboard ---- */
-.intro{background:var(--panel);border:1px solid var(--rule);border-radius:11px;
-padding:18px 20px;margin-bottom:20px}
-.intro h1{font-family:var(--serif);font-size:clamp(21px,3vw,26px);font-weight:700;
-line-height:1.2;letter-spacing:-.015em;margin:0 0 6px}
-.intro p{margin:0;max-width:72ch;color:var(--muted)}
-ol.steps{display:flex;flex-wrap:wrap;gap:8px 22px;margin:12px 0 0;padding:0;list-style:none;
-counter-reset:step;font-size:14px}
-ol.steps li{counter-increment:step;display:flex;align-items:center;gap:8px}
-ol.steps li::before{content:counter(step);width:22px;height:22px;border-radius:50%;
-background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;
-display:grid;place-items:center;flex:none}
-p.meta{margin-top:12px;font-size:12.5px;color:var(--faint)}
+/* ---- page heads ---- */
+.intro{margin-bottom:6px}
+.intro h1,.phead h1{font-size:clamp(25px,3.2vw,33px);font-weight:700;line-height:1.15;
+letter-spacing:-.025em;margin:0 0 8px;text-wrap:balance}
+.intro p{margin:0;max-width:74ch;color:var(--muted)}
+ol.steps{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0;padding:0;list-style:none;
+counter-reset:step;font-size:13px;font-weight:500}
+ol.steps li{counter-increment:step;display:flex;align-items:center;gap:8px;
+background:var(--panel);border:1px solid var(--rule);border-radius:20px;padding:4px 12px 4px 5px}
+ol.steps li::before{content:counter(step);width:20px;height:20px;border-radius:50%;
+background:var(--lime);color:#1A2B20;font-size:11px;font-weight:700;display:grid;
+place-items:center;flex:none}
+.intro p.meta,p.meta{margin-top:12px;font-size:12.5px;color:var(--faint)}
+.crumb{display:flex;gap:7px;align-items:center;font-size:11px;font-weight:700;
+letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+.crumb a:hover{color:var(--lime-ink)}
+.phead{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;
+flex-wrap:wrap}
+.phead>div{min-width:0;flex:1 1 520px}
+.phead p.pmeta{font-size:13px;color:var(--muted);margin:4px 0 0}
+.kpill{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;
+text-transform:uppercase;color:var(--lime-ink);background:var(--lime-soft);border-radius:20px;
+padding:5px 12px;margin-right:10px;vertical-align:1px}
+.btn{display:inline-flex;align-items:center;gap:7px;border-radius:11px;padding:10px 16px;
+font-size:13.5px;font-weight:600;white-space:nowrap}
+.btn.line{background:var(--panel);border:1px solid var(--rule)}
+.btn.line:hover{border-color:var(--lime-ink)}
+
+/* ---- counts ---- */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:24px 0 32px}
+.stat{background:var(--panel);border:1px solid var(--rule);border-radius:15px;padding:16px 18px;
+display:flex;flex-direction:column;min-width:0;box-shadow:var(--shadow)}
+.stat .t{font-size:13px;color:var(--muted);font-weight:500}
+.stat .n{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.15;
+margin:8px 0 6px;font-variant-numeric:tabular-nums}
+.stat .s{font-size:16px;font-weight:600;line-height:1.35;margin:8px 0 6px}
+.stat .k{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+color:var(--muted)}
+.stat small{font-size:12px;color:var(--muted);margin-top:auto}
+.stat.hi{background:var(--lime-soft);border-color:transparent}
+.stat.wide{grid-column:span 2}
+.stats.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+
+/* ---- news categories ---- */
+.catblock{margin:0 0 30px}
+.cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.cats button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;
+border:1px solid var(--rule);background:var(--panel);color:var(--ink);font:inherit;
+border-radius:13px;padding:11px 14px;cursor:pointer;box-shadow:var(--shadow)}
+.cats button b{font-size:14px;font-weight:600}
+.cats button small{font-size:12px;color:var(--muted)}
+.cats button:hover{border-color:var(--lime-ink)}
+.cats button.on{background:var(--lime-soft);border-color:var(--lime-ink)}
 
 /* ---- two column body ---- */
-.cols{display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:18px;align-items:start}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;align-items:start}
 .colhead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
-margin:0 0 11px}
-.colhead h2{font-family:var(--serif);font-size:19px;font-weight:700;margin:0;
-letter-spacing:-.01em}
+margin:0 0 3px;flex-wrap:wrap}
+.colhead h2{font-size:22px;font-weight:700;margin:0;letter-spacing:-.015em}
 .colhead .hint{font-size:12.5px;color:var(--muted)}
+p.under{font-size:13px;color:var(--muted);margin:0 0 14px}
+.sorts{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+.sorts button{border:1px solid transparent;background:transparent;color:var(--ink);font:inherit;
+font-size:13px;font-weight:600;padding:6px 14px;border-radius:20px;cursor:pointer}
+.sorts button:hover{border-color:var(--rule);background:var(--panel)}
+.sorts button.on{background:var(--dark);color:var(--on-dark)}
 
 /* ---- story cards ---- */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:13px}
-.tile{background:var(--panel);border:1px solid var(--rule);border-radius:10px;
-padding:13px 14px;display:flex;flex-direction:column;gap:9px}
-.tile:hover{border-color:var(--accent)}
+.grid{display:flex;flex-direction:column;gap:12px}
+.tile{background:var(--panel);border:1px solid var(--rule);border-radius:15px;
+padding:16px 20px 15px;display:flex;flex-direction:column;gap:7px;box-shadow:var(--shadow)}
+.tile:hover{border-color:var(--lime-ink)}
+.tile .top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.kick{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+color:var(--muted);padding-top:3px}
+.tile h3{font-size:17px;font-weight:600;line-height:1.35;margin:0;letter-spacing:-.01em}
+.tile .desc{font-size:13.5px;color:var(--muted);margin:0}
+.tile .foot{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:6px;
+font-size:12.5px;color:var(--muted)}
+.tile .foot b{color:var(--ink);font-weight:600}
+.ochips{display:flex;gap:4px;flex-wrap:wrap}
+.ochip{font-size:11px;font-weight:600;color:var(--ink);background:var(--bg);
+border:1px solid var(--rule);border-radius:7px;padding:2px 7px}
+.badges{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.badge{font-size:11.5px;font-weight:600;border-radius:20px;padding:4px 11px;white-space:nowrap;
+display:inline-flex;align-items:center;gap:5px}
+.badge.gap,.badge.loose{background:var(--gap-soft);color:var(--gap)}
+.badge.fig{background:var(--lime-soft);color:var(--lime-ink)}
+.badge.ok{background:var(--ok-soft);color:var(--ok)}
+.badge.sim{background:var(--blue-soft);color:var(--blue)}
+.why{display:flex;align-items:flex-start;gap:6px;margin:0;font-size:12.5px;color:var(--gap);
+font-weight:600}
+.why svg{width:12px;height:12px;flex:none;margin-top:3px}
+.empty-grid{background:var(--panel);border:1px dashed var(--rule);border-radius:15px;
+padding:26px;text-align:center;color:var(--muted);font-size:13.5px}
 .chips{display:flex;flex-wrap:wrap;gap:5px}
 .chip{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
-background:var(--bg);border:1px solid var(--rule);color:var(--muted);
-border-radius:5px;padding:3px 6px}
-.tile h3{font-family:var(--serif);font-size:16px;font-weight:600;line-height:1.32;
-margin:0;letter-spacing:-.005em}
-.srcline{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
-.srcline svg{width:12px;height:12px;flex:none;opacity:.7}
-.badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;align-content:flex-start;
-align-items:flex-start}
-.badge{font-size:11px;font-weight:700;border-radius:20px;padding:3px 9px;
-display:inline-flex;align-items:center;gap:5px}
-.badge.gap{background:var(--gap-soft);color:var(--gap)}
-.badge.fig{background:var(--accent-soft);color:var(--accent)}
-.badge.ok{background:var(--ok-soft);color:var(--ok)}
-.badge.loose{background:var(--gap-soft);color:var(--gap)}
-.empty-grid{background:var(--panel);border:1px dashed var(--rule);border-radius:10px;
-padding:26px;text-align:center;color:var(--muted);font-size:13.5px}
+background:var(--bg);border:1px solid var(--rule);color:var(--muted);border-radius:6px;
+padding:3px 7px}
+.srcline{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
 
-/* ---- right rail panels ---- */
-.panel{background:var(--panel);border:1px solid var(--rule);border-radius:10px;
-padding:14px 15px;margin-bottom:13px}
-.panel h4{font-size:13.5px;font-weight:700;margin:0 0 10px}
-.rank{display:flex;flex-direction:column;gap:9px}
-.rank .r{display:flex;gap:9px;align-items:flex-start}
-.rank .r b{width:19px;height:19px;border-radius:5px;background:var(--accent-soft);
-color:var(--accent);font-size:11px;font-weight:700;display:grid;place-items:center;flex:none;
-margin-top:1px}
-.rank .r span{font-size:13px;font-weight:600;line-height:1.3;display:block}
-.rank .r small{font-size:11.5px;color:var(--faint);display:block}
-.panel.quiet{background:var(--bg)}
-.panel.quiet p{font-size:12.5px;color:var(--muted);margin:0 0 8px;line-height:1.5}
-.panel.quiet p:last-child{margin-bottom:0}
+/* ---- side panels ---- */
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:15px;
+padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+.panel h4{font-size:17px;font-weight:600;margin:0 0 2px;letter-spacing:-.01em}
+.panel p.sub{font-size:12.5px;color:var(--muted);margin:0 0 14px}
+ul.latest{list-style:none;margin:0;padding:0}
+ul.latest li{border-top:1px solid var(--rule);padding:11px 0}
+ul.latest li:last-child{padding-bottom:0}
+ul.latest a{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+ul.latest b{font-size:13.5px;font-weight:600;line-height:1.35}
+ul.latest a:hover b{color:var(--lime-ink)}
+ul.latest small{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+ul.latest time{font-size:12px;color:var(--muted);white-space:nowrap}
+.rank{display:flex;flex-direction:column;gap:10px}
+.rank .r{display:flex;gap:10px;align-items:flex-start}
+.rank .r b{width:22px;height:22px;border-radius:7px;background:var(--lime-soft);
+color:var(--lime-ink);font-size:11px;font-weight:700;display:grid;place-items:center;
+flex:none}
+.rank .r span{font-size:13.5px;font-weight:600;line-height:1.3;display:block}
+.rank .r small{font-size:12px;color:var(--muted);display:block}
+.rank .r a:hover span{color:var(--lime-ink)}
+.panel .more{display:block;margin-top:12px;font-size:13px;font-weight:600;color:var(--lime-ink)}
 .panel ul.plain{margin:0;padding-left:16px;font-size:12.5px;color:var(--muted)}
 .panel ul.plain li{margin-bottom:5px}
-details.howto{background:var(--bg);border:1px solid var(--rule);border-radius:10px;
-margin-bottom:13px}
-details.howto summary{cursor:pointer;padding:12px 15px;font-size:13.5px;font-weight:700}
-details.howto .pbody{padding:0 15px 12px}
-details.howto p{font-size:12.5px;color:var(--muted);margin:0 0 8px;line-height:1.5}
+details.howto{background:var(--panel);border:1px solid var(--rule);border-radius:15px;
+margin-bottom:16px}
+details.howto summary{cursor:pointer;padding:15px 20px;font-size:15px;font-weight:600}
+details.howto .pbody{padding:0 20px 15px}
+details.howto p{font-size:13px;color:var(--muted);margin:0 0 9px;line-height:1.55}
 
-/* ---- story detail ---- */
-.back{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--accent);
-font-weight:700;margin-bottom:14px}
-.sheet{background:var(--panel);border:1px solid var(--rule);border-radius:11px;
-padding:22px 24px;max-width:900px}
-.sheet header h1{font-family:var(--serif);font-size:clamp(21px,3.4vw,30px);font-weight:700;
-line-height:1.16;letter-spacing:-.015em;margin:0 0 9px;text-wrap:balance}
-.sheet header p.lede{font-size:14px;color:var(--muted);margin:0 0 4px}
+/* ---- story page ---- */
+.tabbar{display:flex;gap:4px;overflow-x:auto;margin:20px 0 22px;padding:8px 0;
+border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);position:sticky;top:64px;
+z-index:5;background:var(--bg)}
+.tabbar a{font-size:13.5px;font-weight:500;padding:7px 15px;border-radius:10px;
+white-space:nowrap;color:var(--muted)}
+.tabbar a:hover{background:var(--panel);color:var(--ink)}
+.tabbar a.on{background:var(--lime-soft);color:var(--ink);font-weight:700}
+.tabbar a small{font-size:11px;font-weight:600;color:var(--muted);background:var(--panel);
+border:1px solid var(--rule);border-radius:10px;padding:0 6px;margin-left:6px}
+.tabbar a.on small{border-color:transparent}
+.tabs.tabbed .tabpanel:not(.on){display:none}
+.tabs.tabbed .tabpanel{min-height:240px}
+.heads-block{margin-top:22px;scroll-margin-top:136px}
+.story{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:24px;align-items:start}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:15px;
+padding:20px 22px;margin-bottom:18px;box-shadow:var(--shadow);scroll-margin-top:136px;
+min-width:0}
+.card>h2,h3.sub{font-size:19px;font-weight:600;letter-spacing:-.01em;margin:0 0 4px;
+scroll-margin-top:136px}
+p.hint{font-size:13.5px;color:var(--muted);margin:4px 0 14px;max-width:72ch}
+.side{position:sticky;top:136px}
+.minis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0 4px}
+.mini{border:1px solid var(--rule);border-radius:12px;padding:11px 13px}
+.mini .t{font-size:12.5px;color:var(--muted)}
+.mini .n{display:block;font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.2;
+margin:4px 0 2px}
+.mini small{font-size:11.5px;color:var(--muted)}
+.side h5{font-size:14px;font-weight:600;margin:18px 0 8px}
+ul.outlets{list-style:none;margin:0;padding:0}
+ul.outlets li{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13.5px}
+ul.outlets .av{width:26px;height:26px;border-radius:7px;background:var(--bg);
+border:1px solid var(--rule);display:grid;place-items:center;font-size:10.5px;font-weight:700;
+flex:none}
+ul.outlets li.no .av{background:var(--gap-soft);border-color:transparent;color:var(--gap)}
+ul.outlets .go{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
+ul.outlets a.go:hover{color:var(--lime-ink)}
+ul.outlets .tag{margin-left:auto;font-size:10.5px;font-weight:700;text-transform:uppercase;
+letter-spacing:.04em;color:var(--gap);white-space:nowrap}
+p.fine{font-size:12px;color:var(--muted);border-top:1px solid var(--rule);padding-top:12px;
+margin:16px 0 0;line-height:1.5}
 /* the story in a few sentences, before any table */
-.atglance{background:var(--accent-soft);border-radius:10px;padding:13px 16px;margin:16px 0 4px}
-.atglance b.t{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;
-color:var(--accent);margin-bottom:4px}
-.atglance ul{margin:0;padding-left:18px;font-size:14.5px;line-height:1.5}
+.atglance{background:var(--lime-soft);border-radius:12px;padding:14px 18px}
+.atglance b.t{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;
+color:var(--lime-ink);margin-bottom:4px}
+.atglance ul{margin:0;padding-left:18px;font-size:14.5px;line-height:1.55}
 .atglance li{margin:4px 0}
-.atglance a{color:var(--accent);font-weight:700;white-space:nowrap}
+.atglance a{color:var(--lime-ink);font-weight:700;white-space:nowrap;text-decoration:underline;
+text-underline-offset:2px}
 .pills{display:flex;flex-wrap:wrap;gap:6px}
 .pill{font-size:12.5px;border-radius:20px;padding:3px 10px;border:1px solid var(--rule);
 background:var(--bg)}
 .pill b{font-weight:700}
 .trow{display:grid;grid-template-columns:170px minmax(0,1fr);gap:12px;align-items:center;
-padding:10px 0 4px;border-top:1px solid var(--rule)}
+padding:11px 0 5px;border-top:1px solid var(--rule)}
 .trow>div:first-child b{font-size:14px}
 .trow small{display:block;font-size:11.5px;color:var(--muted)}
 details.ex{margin:0 0 8px 182px;font-size:12.5px}
-details.ex summary{cursor:pointer;color:var(--accent);font-weight:700}
+details.ex summary{cursor:pointer;color:var(--lime-ink);font-weight:700}
 p.fgroup{font-size:13.5px;margin:12px 0 7px}
 h4.fsub{font-size:13.5px;margin:12px 0 4px}
-p.swipe{display:none;font-size:12.5px;font-weight:700;color:var(--accent);margin:4px 0}
+p.swipe{display:none;font-size:12.5px;font-weight:700;color:var(--lime-ink);margin:4px 0}
 @media(max-width:820px){.trow{grid-template-columns:minmax(0,1fr);gap:6px}
 details.ex{margin-left:0}p.swipe{display:block}}
-h3.sub{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;
-color:var(--muted);margin:26px 0 7px;padding-bottom:6px;border-bottom:1px solid var(--rule);
-scroll-margin-top:76px}
-p.hint{font-size:13.5px;color:var(--muted);margin:8px 0 13px;max-width:70ch}
-.loose{border:1px solid var(--gap);background:var(--gap-soft);border-radius:9px;
-padding:12px 14px;margin:14px 0;font-size:13.5px}
+.loose{border:1px solid var(--gap);background:var(--gap-soft);border-radius:12px;
+padding:12px 14px;margin:0 0 14px;font-size:13.5px}
 .loose b{color:var(--gap)}
 .heads{margin:0;padding:0;list-style:none}
 .heads li{display:grid;grid-template-columns:148px minmax(0,1fr);gap:13px;padding:10px 0;
 border-bottom:1px solid var(--rule);align-items:baseline}
 .heads li:first-child{border-top:1px solid var(--rule)}
+.heads li:last-child{border-bottom:0}
 .hsrc{font-size:12.5px;font-weight:700}
 .hsrc .unread{display:block;font-size:10px;font-weight:700;text-transform:uppercase;
 letter-spacing:.05em;color:var(--gap);margin-top:2px}
-.heads a{font-family:var(--serif);font-size:15px;line-height:1.38}
-.heads a:hover{text-decoration:underline;text-decoration-color:var(--accent)}
+.heads a{font-size:15px;line-height:1.4;font-weight:500}
+.heads a:hover{text-decoration:underline;text-decoration-color:var(--lime-ink)}
 .scroll{overflow-x:auto;margin:6px 0}
 table{border-collapse:collapse;width:100%;min-width:520px;font-size:13.5px}
-th,td{padding:9px 7px;border-bottom:1px solid var(--rule)}
-thead th{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
-color:var(--muted);text-align:center;vertical-align:bottom;border-bottom:2px solid var(--ink)}
+th,td{padding:10px 8px;border-bottom:1px solid var(--rule)}
+thead th{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+color:var(--muted);text-align:center;vertical-align:bottom}
 thead th:first-child{text-align:left;width:48%}
-td.f{font-family:var(--serif);font-size:14px;line-height:1.4}
+td.f{font-size:14px;line-height:1.45}
+td.f .st{display:block;font-size:11.5px;color:var(--muted);margin-top:5px}
 td.m{text-align:center;font-size:15px;font-weight:700}
 td.m.y{color:var(--ok)}td.m.n{color:var(--gap);background:var(--gap-soft)}
-td.m.r{color:var(--violet)}
-.legend i.r{color:var(--violet)}
-details.rel{margin-top:6px;font-family:var(--sans);font-size:12.5px;color:var(--muted)}
-details.rel summary{cursor:pointer;color:var(--violet);font-weight:700}
+td.m.r{color:var(--blue);background:var(--blue-soft)}
+details.rel{margin-top:6px;font-size:12.5px;color:var(--muted)}
+details.rel summary{cursor:pointer;color:var(--blue);font-weight:700}
 details.rel p{margin:5px 0 0;line-height:1.45}
-.remark{border:1px solid var(--rule);border-radius:10px;padding:11px 14px 6px;margin-bottom:10px;
+.remark{border:1px solid var(--rule);border-radius:12px;padding:11px 14px 6px;margin-bottom:10px;
 background:var(--bg)}
 .rhead{display:flex;gap:10px;align-items:baseline;margin-bottom:6px}
 .rhead b{font-size:14.5px}.rhead span{font-size:12px;color:var(--muted)}
 .ver{display:grid;grid-template-columns:130px minmax(0,1fr);gap:12px;padding:8px 0;
 border-top:1px solid var(--rule);align-items:start}
 .vsrc{font-size:12.5px;font-weight:700}
-.ver blockquote{margin:0;font-family:var(--serif);font-size:14px;line-height:1.45}
-.ver mark{background:var(--accent-soft);color:var(--ink);border-radius:3px;padding:0 2px}
+.ver blockquote{margin:0;font-size:14px;line-height:1.5}
+.ver mark{background:var(--lime-soft);color:var(--ink);border-radius:3px;padding:0 2px}
 .vrel{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:700;text-transform:uppercase;
-letter-spacing:.04em;border-radius:4px;padding:2px 6px;border:1px solid var(--rule);color:var(--muted)}
+letter-spacing:.04em;border-radius:5px;padding:2px 6px;border:1px solid var(--rule);color:var(--muted)}
 .vrel.q-same{color:var(--ok);border-color:var(--ok)}
-.vrel.q-more,.vrel.q-less{color:var(--accent);border-color:var(--accent)}
-.vrel.q-diff{color:var(--violet);border-color:var(--violet)}
+.vrel.q-more,.vrel.q-less{color:var(--lime-ink);border-color:var(--lime-ink)}
+.vrel.q-diff{color:var(--blue);border-color:var(--blue)}
 ul.qlist{margin:0;padding:0 0 4px;list-style:none}
 ul.qlist li{padding:8px 0;border-top:1px solid var(--rule);font-size:13px}
-ul.qlist li span{display:block;font-family:var(--serif);font-size:14px;margin-top:3px}
+ul.qlist li span{display:block;font-size:14px;margin-top:3px}
 @media(max-width:820px){.ver{grid-template-columns:minmax(0,1fr);gap:4px}}
 tfoot td{font-size:12px;color:var(--muted);border-bottom:none;padding-top:10px;
 text-align:center;font-variant-numeric:tabular-nums}
 tfoot td:first-child{text-align:left;font-weight:700;color:var(--ink)}
 .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted);padding:2px 0 6px}
 .legend i{font-style:normal;font-weight:700}
-.legend i.y{color:var(--ok)}.legend i.n{color:var(--gap)}
+.legend i.y{color:var(--ok)}.legend i.n{color:var(--gap)}.legend i.r{color:var(--blue)}
 .quote{display:grid;grid-template-columns:132px minmax(0,1fr);gap:13px;padding:11px 0;
 border-bottom:1px solid var(--rule);align-items:start}
 .qsrc{display:block;font-size:12.5px;font-weight:700}
 .qtone{display:block;font-size:11px;color:var(--muted)}
-.quote blockquote{margin:0;font-family:var(--serif);font-size:14px;line-height:1.45;
-color:var(--ink)}
-.qmark{display:block;font-size:11px;color:var(--faint);margin-top:4px;font-family:var(--sans)}
-.fig{border:1px solid var(--rule);border-radius:9px;padding:11px 13px;margin-bottom:9px;
+.quote blockquote{margin:0;font-size:14px;line-height:1.5;color:var(--ink)}
+.qmark{display:block;font-size:11px;color:var(--faint);margin-top:4px}
+.fig{border:1px solid var(--rule);border-radius:12px;padding:11px 13px;margin-bottom:9px;
 background:var(--bg)}
 .fhead{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;margin-bottom:5px}
-.fval{font-family:var(--serif);font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
+.fnum{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
 .fsrc{font-size:12.5px;font-weight:700;color:var(--muted)}
 .ftag{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
-background:var(--panel);border:1px solid var(--rule);color:var(--muted);
-border-radius:4px;padding:2px 5px}
-.fctx{font-size:13px;color:var(--muted);margin:0;line-height:1.5}
-.fctx strong{color:var(--ink);font-weight:700;background:var(--accent-soft);border-radius:3px;
+background:var(--panel);border:1px solid var(--rule);color:var(--muted);border-radius:5px;
+padding:2px 5px}
+.fctx{font-size:13px;color:var(--muted);margin:0;line-height:1.55}
+.fctx strong{color:var(--ink);font-weight:700;background:var(--lime-soft);border-radius:3px;
 padding:0 3px}
-.fctx a{color:var(--accent);font-weight:700;white-space:nowrap}
+.fctx a{color:var(--lime-ink);font-weight:700;white-space:nowrap}
 .empty{font-size:13.5px;color:var(--muted);font-style:italic}
+footer.end{margin-top:8px;padding-top:14px;border-top:1px solid var(--rule);
+font-size:12.5px;color:var(--faint);line-height:1.55}
 
 /* ---- search page ---- */
 .bigsearch{display:flex;align-items:center;gap:9px;border:1px solid var(--rule);
-background:var(--bg);border-radius:10px;padding:6px 6px 6px 13px;margin:16px 0 8px}
-.bigsearch:focus-within{border-color:var(--accent)}
-.bigsearch svg{width:16px;height:16px;color:var(--faint);flex:none}
+background:var(--bg);border-radius:12px;padding:6px 6px 6px 13px;margin:0 0 8px}
+.bigsearch:focus-within{border-color:var(--lime-ink)}
+.bigsearch svg{width:16px;height:16px;color:var(--muted);flex:none}
 .bigsearch input{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);
 font:inherit;font-size:16px;outline:none;padding:6px 0}
-.bigsearch button{border:0;border-radius:7px;background:var(--accent);color:#06231E;
-font:inherit;font-size:14px;font-weight:700;padding:8px 16px;cursor:pointer}
+.bigsearch button{border:0;border-radius:9px;background:var(--dark);color:var(--on-dark);
+font:inherit;font-size:14px;font-weight:600;padding:8px 18px;cursor:pointer}
 .hit{padding:15px 0;border-top:1px solid var(--rule)}
-.hit h3{font-family:var(--serif);font-size:17px;font-weight:600;line-height:1.3;margin:8px 0 6px}
-.hit h3 a:hover{text-decoration:underline;text-decoration-color:var(--accent)}
+.hit h3{font-size:17px;font-weight:600;line-height:1.35;margin:8px 0 6px}
+.hit h3 a:hover{text-decoration:underline;text-decoration-color:var(--lime-ink)}
 .hit .heads li{padding:7px 0}
 .snip{font-size:13.5px;color:var(--muted);margin:0 0 6px}
-.hitlink{display:inline-block;margin-top:8px;font-size:13px;font-weight:700;color:var(--accent)}
-footer.end{margin-top:30px;padding-top:14px;border-top:1px solid var(--rule);
-font-size:12.5px;color:var(--faint);line-height:1.55}
+.hitlink{display:inline-block;margin-top:8px;font-size:13px;font-weight:700;color:var(--lime-ink)}
 
 /* ---- people ---- */
-.meter{height:8px;border-radius:4px;background:var(--rule);overflow:hidden}
-.meter i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.tbar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--bg);
+min-width:100px;max-width:200px}
+.tbar i{display:block;height:100%}
+.tbar i.ng{background:var(--neg)}.tbar i.nu{background:var(--neu)}.tbar i.ps{background:var(--pos)}
+.tkey{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:10px 0 0}
+.tkey span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:3px;
+margin-right:6px;vertical-align:-1px;background:var(--neu)}
+.tkey .ng::before{background:var(--neg)}.tkey .ps::before{background:var(--pos)}
 p.psum{font-size:14px;margin:2px 0 8px;max-width:72ch}
 .role{display:block;font-size:12px;font-weight:600;color:var(--muted)}
 .ph li{grid-template-columns:140px minmax(0,1fr)}
 .ph small{display:block;font-size:11px;color:var(--faint);margin-top:3px}
 .pchips{display:flex;flex-wrap:wrap;gap:7px;margin:6px 0 4px}
-.pchip{font-size:13px;font-weight:700;border:1px solid var(--accent);color:var(--accent);
-border-radius:20px;padding:4px 11px}
-.pchip:hover{background:var(--accent-soft)}
-.panel .more{display:block;margin-top:10px;font-size:12.5px;font-weight:700;color:var(--accent)}
-.rank .r a:hover span{color:var(--accent)}
-ul.facts{margin:6px 0 4px;padding-left:18px;font-size:14.5px;line-height:1.5}
+.pchip{font-size:13px;font-weight:600;border:1px solid var(--rule);background:var(--panel);
+border-radius:20px;padding:4px 12px}
+.pchip:hover{border-color:var(--lime-ink);background:var(--lime-soft)}
+.card .people{margin-top:14px}
+.card .people p.hint{margin-bottom:6px}
+ul.facts{margin:6px 0 4px;padding-left:18px;font-size:14.5px;line-height:1.55}
 ul.facts li{margin:4px 0}
-table.glance{min-width:660px}
-table.glance thead th{text-align:left}
-table.glance thead th:first-child{width:auto}
-table.glance td{vertical-align:middle}
+table.glance{min-width:480px}table.ptable{min-width:620px}
+table.glance thead th,table.ptable thead th{text-align:left}
+table.glance thead th:first-child,table.ptable thead th:first-child{width:auto}
+table.glance td,table.ptable td{vertical-align:middle}
 table.glance td.o{font-weight:700;width:170px;line-height:1.25}
 table.glance td.o small{display:block;font-weight:400;font-size:11px;color:var(--muted)}
-table.glance td.cov{width:190px}
-table.glance td.cov small{display:block;font-size:11.5px;color:var(--muted);margin-top:4px}
-table.glance td small{color:var(--muted)}
+table.glance td small,table.ptable td small{display:block;font-size:11.5px;color:var(--muted);
+margin-top:3px}
 table.glance tr.none td{color:var(--muted)}
-table.glance td.few{color:var(--faint);font-style:italic}
-details.pdet{border:1px solid var(--rule);border-radius:10px;background:var(--bg);margin-bottom:9px}
+table.glance td.o a{color:inherit;border-bottom:1px dashed var(--faint)}
+table.glance td.o a:hover{color:var(--lime-ink);border-color:var(--lime-ink)}
+table.ptable td.rk{color:var(--muted);font-size:12px;width:40px;font-variant-numeric:tabular-nums}
+table.ptable td.num{font-variant-numeric:tabular-nums;font-weight:600}
+table.ptable a.nm{font-weight:600}
+table.ptable a.nm:hover,a.open:hover{color:var(--lime-ink)}
+a.open{font-size:12.5px;font-weight:600;white-space:nowrap}
+details.pdet{border:1px solid var(--rule);border-radius:12px;background:var(--bg);margin-bottom:9px}
 details.pdet summary{cursor:pointer;padding:11px 14px;display:flex;gap:10px;align-items:baseline;
 list-style:none}
 details.pdet summary::-webkit-details-marker{display:none}
 details.pdet summary span{font-size:12.5px;color:var(--muted)}
-details.pdet summary::after{content:"+";margin-left:auto;font-weight:700;color:var(--accent)}
+details.pdet summary::after{content:"+";margin-left:auto;font-weight:700;color:var(--lime-ink)}
 details.pdet[open] summary::after{content:"–"}
-details.pdet summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:9px}
 details.pdet .pbody{padding:0 14px 12px}
-details.method{margin-top:18px;background:transparent}
+details.method{background:var(--panel)}
 details.method .pbody p,details.method .pbody li{font-size:12.5px;color:var(--muted)}
-table.glance td small{display:block;font-size:11.5px;color:var(--muted);margin-top:3px}
-table.glance td.o a{color:inherit;border-bottom:1px dashed var(--faint)}
-table.glance td.o a:hover{color:var(--accent);border-color:var(--accent)}
 .vt{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
 .few{color:var(--faint);font-style:italic}
-p.go{font-size:12.5px;color:var(--accent);font-weight:700;margin:6px 0 2px}
+p.go{font-size:12.5px;color:var(--lime-ink);font-weight:700;margin:6px 0 2px}
 @media(max-width:820px){.ph li{grid-template-columns:minmax(0,1fr)}}
 
-@media(max-width:1080px){.cols{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:1180px){.cols,.story{grid-template-columns:minmax(0,1fr)}
+.side{position:static}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:820px){
 .app{grid-template-columns:1fr}
 .rail{position:static;height:auto;flex-direction:row;align-items:center;gap:12px;
-overflow-x:auto;padding:10px 14px}
+overflow-x:auto;padding:10px 16px;border-right:0;border-bottom:1px solid var(--rule)}
+.brand{padding:0}.brand small,.rlabel,.snap{display:none}
+.brand .glyph{width:32px;height:32px;border-radius:9px}
 .rail nav{flex-direction:row;gap:4px}
-.rail nav a{white-space:nowrap}
-.content{padding:16px 16px 56px}
-.topbar{padding:11px 16px}.stamp{display:none}
-.sheet{padding:17px 16px;border-radius:9px}
+.rail nav a{white-space:nowrap;padding:6px 8px}
+.rail nav .ico{width:24px;height:24px}
+.content{padding:20px 16px 56px}
+.topbar{padding:10px 16px;position:static;min-height:0}.stamp{display:none}
+.tabbar{top:0}
+.card,.panel{padding:16px}
 .quote{grid-template-columns:minmax(0,1fr);gap:5px}
 .heads li{grid-template-columns:minmax(0,1fr);gap:3px}
+.tile{padding:14px 16px}
+.tile .top{flex-direction:column;gap:6px}
+.cats{display:flex;overflow-x:auto;padding-bottom:4px}
+.cats button{flex:none;min-width:128px}
+.badges{justify-content:flex-start}
 }
+@media(max-width:560px){.stats{gap:10px;margin:18px 0 24px}.stat{padding:12px 14px}
+.stat .n{font-size:23px;margin:6px 0 4px}.stat .s{font-size:14.5px}
+.stats.three{grid-template-columns:repeat(2,minmax(0,1fr))}}
 """
 
 FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
          '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
          '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
-         'family=Newsreader:opsz,wght@6..72,400;6..72,600;6..72,700&'
-         'family=Source+Sans+3:wght@400;600;700&display=swap">')
+         'family=Figtree:wght@400;500;600;700&display=swap">')
 
 # Inline so the pages work from the filesystem with no network and no build step.
 ICON = {
- "eye": '<svg viewBox="0 0 24 24" fill="none" stroke="#052A25" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12S19 18.5 12 18.5 1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="2.6"/></svg>',
+ "eye": '<svg viewBox="0 0 24 24" fill="none" stroke="#1A2B20" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12S19 18.5 12 18.5 1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="2.6"/></svg>',
  "grid": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
  "doc": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10A1.5 1.5 0 0 0 18.5 20V7L14 2.5Z"/><path d="M13.5 2.5V7.5h5"/></svg>',
+ "flame": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>',
  "info": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.5v.01"/></svg>',
  "person": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7.5 8-7.5s8 3.1 8 7.5"/></svg>',
  "search": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>',
  "arrow": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>',
+ "out": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px;vertical-align:-1px"><path d="M7 17 17 7M8 7h9v9"/></svg>',
 }
 
-# Four places, each a page a reader can name. Readers testing the site found the
+# Five places, each a page a reader can name. Readers testing the site found the
 # earlier eight links - several of them jumps to panels on the dashboard - more
 # to take in than to use.
 NAV = (("index.html", "grid", "Stories"),
+       ("contested.html", "flame", "Contested"),
        ("people.html", "person", "People"),
        ("search.html", "search", "Search"),
        ("index.html#about", "info", "How it works"))
@@ -454,6 +588,11 @@ def coverage_table(cluster):
             else:
                 cells.append('<td class="m n" title="did not report this">&mdash;</td>')
         fact = e(trim(group["anchor"]["text"], 170))
+        # the row in words, counted over the outlets that could be read only
+        status = f"Reported by {sum(1 for o in read if o in reported)} of {len(read)}"
+        similar = sum(1 for o in read if o in related and o not in reported)
+        fact += f'<span class="st">{status}' + (f" &middot; similar in {similar}"
+                                                  if similar else "") + "</span>"
         if related:
             said = "".join(f'<p><b>{e(o)}:</b> {e(trim(text, 220))}</p>'
                            for o, text in related.items())
@@ -522,7 +661,7 @@ def framing_block(cluster):
            'tone of the sentences naming it.' if targeted else
            'The overall tone of each outlet’s sentences naming them, which follows the '
            'events as much as the name.')
-    return ('<h3 class="sub" id="tone">How they were described</h3>'
+    return ('<h3 class="sub">How they were described</h3>'
             f'<p class="hint">{how} A hint, not a verdict: it can be wrong.</p>'
             + "".join(out))
 
@@ -587,12 +726,13 @@ def quotes_block(cluster):
             f'<span>“{e(trim(r["versions"][0]["quote"], 220))}”</span></li>'
             for r in single)
         people = len({r["speaker"] for r in single if r["speaker"]})
-        others = (f'<details class="pdet"><summary><b>Other quotes</b><span>{len(single)} from '
+        others = (f'<details class="pdet"{"" if shared else " open"}><summary><b>Other quotes'
+                  f'</b><span>{len(single)} from '
                   f'{people} people, each in one outlet</span></summary>'
                   f'<ul class="qlist">{items}</ul></details>')
     hint = ('<p class="hint">The same remark as each outlet printed it. Highlighted words '
             'are ones the first outlet left out.</p>' if shared else "")
-    return '<h3 class="sub" id="quotes">What was said</h3>' + hint + "".join(out) + others
+    return '<h3 class="sub">What was said</h3>' + hint + "".join(out) + others
 
 
 def _figure_row(row):
@@ -686,7 +826,10 @@ def figures_block(cluster):
         extra.extend(_figure_row(row) for row in solo)
     if extra:
         lead = "More numbers" if out else "Numbers in this story"
-        out.append(f'<details class="pdet"><summary><b>{lead}</b><span>'
+        # folded beside the figures that can be compared; open when they are all
+        # there is, or the Numbers tab would look empty
+        opened = "" if out else " open"
+        out.append(f'<details class="pdet"{opened}><summary><b>{lead}</b><span>'
                    f'{plural(len(ungrouped) + len(solo), "figure")} with nothing to set '
                    f'beside</span></summary><div class="pbody">{"".join(extra)}</div></details>')
 
@@ -696,16 +839,22 @@ def figures_block(cluster):
     return "".join(out)
 
 
-def rail(active):
+def rail(active, generated=""):
     items = []
     for href, icon, label in NAV:
         on = ' class="on"' if label == active else ""
-        items.append(f'<a href="{href}"{on}>{ICON[icon]}<span>{e(label)}</span></a>')
+        items.append(f'<a href="{href}"{on}><span class="ico">{ICON[icon]}</span>'
+                     f'<span>{e(label)}</span></a>')
+    # A snapshot, not a live feed: the pages are built from the database at one
+    # moment, and say which. A "live" badge on a static page would be false.
+    snap = (f'<div class="snap"><b>Snapshot</b><p>Built {e(generated)} from '
+            f'{len(RSS_FEEDS)} outlets’ public feeds.</p></div>' if generated else "")
     return (
         '<aside class="rail">'
-        f'<div class="brand"><span class="glyph">{ICON["eye"]}</span><b>Newseye</b></div>'
-        f'<nav>{"".join(items)}</nav>'
-        '</aside>')
+        f'<div class="brand"><span class="glyph">{ICON["eye"]}</span><div><b>Newseye</b>'
+        '<small>Kenyan news compared</small></div></div>'
+        f'<div><p class="rlabel">Browse</p><nav>{"".join(items)}</nav></div>'
+        + snap + '</aside>')
 
 
 def shell(title, active, body, generated, search="link", scripts=""):
@@ -724,9 +873,9 @@ def shell(title, active, body, generated, search="link", scripts=""):
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f'<title>{e(title)}</title>\n{FONTS}\n<style>{CSS}</style>\n</head>\n<body>\n'
-        f'<div class="app">{rail(active)}<div class="main">'
+        f'<div class="app">{rail(active, generated)}<div class="main">'
         f'<div class="topbar">{box}'
-        f'<span class="stamp">Updated {e(generated)}</span></div>'
+        f'<span class="stamp">Data as of {e(generated)}</span></div>'
         f'<div class="content">{body}</div></div></div>\n'
         + (SEARCH_JS if search == "filter" else "")
         + scripts
@@ -742,15 +891,102 @@ SEARCH_JS = """<script>
   var tiles=[].slice.call(document.querySelectorAll('.tile'));
   var count=document.getElementById('shown');
   var none=document.getElementById('nores');
-  q.addEventListener('input',function(){
+  var cats=[].slice.call(document.querySelectorAll('.cats button'));
+  var topic='';
+  function filter(){
     var t=q.value.trim().toLowerCase(), n=0;
     tiles.forEach(function(el){
-      var hit=!t||(el.dataset.find||'').indexOf(t)>-1;
+      var hit=(!t||(el.dataset.find||'').indexOf(t)>-1)&&(!topic||el.dataset.topic===topic);
       el.style.display=hit?'':'none'; if(hit)n++;
     });
     if(count) count.textContent=n+(n===1?' story':' stories');
     if(none) none.style.display=n?'none':'';
+  }
+  q.addEventListener('input',filter);
+  cats.forEach(function(button){
+    button.addEventListener('click',function(){
+      topic=button.dataset.topic;
+      cats.forEach(function(b){
+        b.classList.toggle('on',b===button); b.setAttribute('aria-pressed',b===button);
+      });
+      filter();
+    });
   });
+})();
+</script>"""
+
+# The order buttons above a story list re-order its cards in place. Each card
+# carries what it is sorted by, so this needs no data beyond the markup.
+SORT_JS = """<script>
+(function(){
+  [].forEach.call(document.querySelectorAll('.sorts'), function(group){
+    var list = group.parentNode.querySelector('.grid'); if(!list) return;
+    var cards = [].slice.call(list.children);
+    cards.forEach(function(card, i){ card.dataset.i = i; });
+    group.addEventListener('click', function(event){
+      var button = event.target.closest('button'); if(!button) return;
+      var key = button.dataset.sort;
+      [].forEach.call(group.querySelectorAll('button'), function(b){
+        b.classList.toggle('on', b === button); b.setAttribute('aria-pressed', b === button);
+      });
+      cards.slice().sort(function(a, b){
+        return key === 'i' ? a.dataset.i - b.dataset.i
+          : (+b.dataset[key] || 0) - (+a.dataset[key] || 0) || a.dataset.i - b.dataset.i;
+      }).forEach(function(card){ list.appendChild(card); });
+    });
+  });
+})();
+</script>"""
+
+# A story page's tabs: one section at a time, switched in place. Without the
+# script every section shows, one under another, and the tabs are links down the
+# page. Each copy readies the tab boxes parsed so far; the listeners are added
+# once, because the single-file bundle holds every page in one document.
+TABS_JS = """<script>
+(function(){
+  function select(panel){
+    var box = panel.closest('.tabs'); if (!box) return;
+    box.classList.add('tabbed');
+    [].forEach.call(box.querySelectorAll('.tabpanel'), function(p){
+      p.classList.toggle('on', p === panel);
+    });
+    [].forEach.call(box.querySelectorAll('.tabbar a'), function(a){
+      var on = a.getAttribute('href').slice(1) === panel.id;
+      a.classList.toggle('on', on); a.setAttribute('aria-selected', on);
+    });
+  }
+  function panelFor(id){
+    var el = id && document.getElementById(id);
+    return el && el.closest('.tabpanel');
+  }
+  [].forEach.call(document.querySelectorAll('.tabs:not(.tabbed)'), function(box){
+    var first = box.querySelector('.tabpanel'); if (first) select(first);
+  });
+  if (window.newseyeTabs) return; window.newseyeTabs = true;
+  function fromHash(){
+    var panel = panelFor(decodeURIComponent(location.hash.slice(1)));
+    if (panel) select(panel);
+  }
+  // a tab, or a link to a section ("See which"), switches without a jump; if the
+  // reader had scrolled down, the new section starts just under the tab bar
+  document.addEventListener('click', function(event){
+    var link = event.target.closest && event.target.closest('a[href^="#"]');
+    var panel = link && panelFor(link.getAttribute('href').slice(1));
+    if (!panel) return;
+    event.preventDefault();
+    select(panel);
+    try { history.replaceState(null, '', link.getAttribute('href')); } catch (err) {}
+    var box = panel.closest('.tabs'), bar = box.closest('.main').querySelector('.topbar');
+    var offset = bar && getComputedStyle(bar).position === 'sticky' ? bar.offsetHeight : 0;
+    var top = box.getBoundingClientRect().top + window.scrollY - offset;
+    if (window.scrollY > top) window.scrollTo(0, top);
+    // a link to a part of a section ("Read the originals") goes on to that part
+    var target = document.getElementById(link.getAttribute('href').slice(1));
+    if (target !== panel) target.scrollIntoView({block: 'start'});
+  });
+  window.addEventListener('hashchange', fromHash);
+  document.addEventListener('DOMContentLoaded', fromHash);
+  fromHash();
 })();
 </script>"""
 
@@ -760,58 +996,88 @@ def gaps_in(cluster):
     return sum(1 for g in cluster["consensus"] if g.get("omitted_by") or g.get("related"))
 
 
-def story_tile(cluster):
-    """Headline, who covered it, and in a few words what differs.
+def story_tile(cluster, why=None):
+    """Headline, who covered it, and in a few words what differs; why, when
+    given, is a line saying why the tile is on the list it is on.
 
     The tile used to carry a bar of "0 carried by all / 4 not", which readers had
     to decode, and two outlet chips that looked like the only outlets. It now says
-    the same things in words.
+    the same things in words: the line under the headline lists the differences
+    a reader can check on the story page, never a verdict on them.
     """
+    from backend.analysis.divergence import differences
+
     sources = sorted({a["source"] for a in cluster["articles"]})
+    _, unread = read_outlets(cluster)
     gaps = gaps_in(cluster)
     tiers = summarise(cluster.get("figure_digest") or [])
     coherence = cluster.get("coherence") or 0
+    found = differences(cluster)
+    latest = newest(cluster)
 
     badges = []
     if gaps:
-        badges.append(f'<span class="badge gap">{plural(gaps, "fact")} only some '
-                      f'outlets reported</span>')
+        badges.append(f'<span class="badge gap">{plural(gaps, "fact")} not in every '
+                      'outlet</span>')
     else:
         badges.append('<span class="badge ok">same facts in every outlet we read</span>')
-    if tiers["shared"]:
-        badges.append(f'<span class="badge fig">{plural(tiers["shared"], "number")} '
-                      f'to compare</span>')
     if coherence and coherence < 0.5:
         badges.append('<span class="badge loose">may mix two stories</span>')
 
-    named = ", ".join(sources[:3]) + (f" and {len(sources) - 3} more" if len(sources) > 3 else "")
+    if why:
+        line = f'<p class="why">{ICON["flame"]}<span>{e(why)}</span></p>'
+    elif found["reasons"]:
+        reasons = " · ".join(found["reasons"])
+        line = f'<p class="desc">{e(reasons[:1].upper() + reasons[1:])}.</p>'
+    elif gaps:
+        line = '<p class="desc">Some facts appear in only some of the outlets we could read.</p>'
+    else:
+        line = '<p class="desc">Every outlet we could read reported the same facts.</p>'
+
+    chips = "".join(f'<span class="ochip">{e(s)}</span>' for s in sources[:3])
+    if len(sources) > 3:
+        chips += f'<span class="ochip">+{len(sources) - 3}</span>'
+    meta = [f'<b>{plural(len(sources), "outlet")}</b>',
+            plural(len(cluster["articles"]), "article")]
+    if tiers["shared"]:
+        meta.append(f'{plural(tiers["shared"], "number")} to compare')
+    if unread:
+        meta.append(f'{len(unread)} could not be read')
+    if latest:
+        meta.append(f"latest {day(latest)}")
     find = " ".join([cluster.get("title_summary") or "", cluster.get("subject") or "",
                      cluster.get("topic_label") or ""] + sources).lower()
     return (
-        f'<a class="tile" href="story-{cluster["cluster_id"]}.html" '
-        f'data-find="{e(find)}">'
-        f'<div class="chips"><span class="chip">{e(cluster.get("topic_label") or "General")}'
-        '</span></div>'
-        f'<h3>{e(trim(cluster.get("title_summary") or "Untitled story", 96))}</h3>'
-        f'<div class="srcline">{ICON["doc"]}<span>{len(sources)} outlets: {e(named)}</span></div>'
-        f'<div class="badges">{"".join(badges)}</div></a>')
+        f'<a class="tile" href="story-{cluster["cluster_id"]}.html" data-find="{e(find)}" '
+        f'data-topic="{e(cluster.get("topic_label") or "General")}" '
+        f'data-diff="{found["score"] + gaps / 100:.2f}" '
+        f'data-latest="{int(latest.timestamp()) if latest else 0}">'
+        f'<div class="top"><span class="kick">{e(cluster.get("topic_label") or "General")}</span>'
+        f'<span class="badges">{"".join(badges)}</span></div>'
+        f'<h3>{e(trim(cluster.get("title_summary") or "Untitled story", 110))}</h3>'
+        + line
+        + f'<div class="foot"><span class="ochips">{chips}</span>'
+        + "".join(f"<span>{m}</span>" for m in meta) + '</div></a>')
 
 
 def dashboard(clusters, generated, stats, people=None, selection=None):
     """What Newseye is for, then the stories.
 
-    Readers shown the earlier version asked what they were looking at and what
-    they were meant to do. Four counter cards and six side panels came before any
-    answer. The page now says what it is and what to do in three steps; the
-    explanations it used to show open are folded under "How it works".
+    Readers shown an earlier version asked what they were looking at and what
+    they were meant to do: four counter cards and six side panels came before any
+    answer. So the page opens with what it is and what to do in three steps, and
+    every count after that is one a story page can show. Nothing here is live;
+    the counts are of this snapshot.
     """
     tiles = "".join(story_tile(c) for c in clusters)
     unread = sorted({a["source"] for c in clusters for a in c["articles"]
                      if not a["fetched"]})
     # a demonstration set is chosen for what it shows, and says so: contested
     # stories are not a typical day's mix
-    chosen = (' These stories were picked to show every kind of comparison, so they are '
-              'more contested than a typical day.' if selection == "showcase" else "")
+    chosen = {"showcase": ' These stories were picked to show every kind of comparison, so '
+                          'they are more contested than a typical day.',
+              "contested": ' These are the most contested stories of the past week, not a '
+                           "typical day's mix."}.get(selection, "")
     body = (
         '<section class="intro"><h1>See how Kenyan outlets cover the same story</h1>'
         f'<p>Newseye reads {stats["outlets"]} Kenyan news sites, groups the articles about '
@@ -819,26 +1085,148 @@ def dashboard(clusters, generated, stats, people=None, selection=None):
         'it gave. It does not say who is right: you compare.</p>'
         '<ol class="steps"><li>Pick a story</li><li>See what each outlet reported, side by '
         'side</li><li>Open the original articles</li></ol>'
-        f'<p class="meta">{stats["usable"]:,} stories &middot; {stats["articles"]:,} '
-        f'articles &middot; updated {e(generated)}. A demonstration on real data: nothing '
-        f'here is made up.{chosen}</p></section>'
-
-        '<div class="cols"><div>'
-        '<div class="colhead" id="stories"><h2>Stories</h2>'
+        f'<p class="meta">A demonstration on real data: nothing here is made up.{chosen}</p>'
+        '</section>'
+        + dashboard_counts(clusters, stats)
+        + categories_section(clusters)
+        + '<div class="cols"><div>'
+        '<div class="colhead" id="stories"><h2>Stories to compare</h2>'
         f'<span class="hint"><span id="shown">{plural(len(clusters), "story", "stories")}'
-        '</span> &middot; most outlets first</span></div>'
+        '</span></span></div>'
+        '<p class="under">Open a story to see what each outlet reported, side by side.</p>'
+        '<div class="sorts" role="group" aria-label="Order the stories">'
+        '<button type="button" class="on" aria-pressed="true" data-sort="i">Most outlets'
+        '</button><button type="button" aria-pressed="false" data-sort="diff">Most '
+        'differences</button><button type="button" aria-pressed="false" '
+        'data-sort="latest">Latest</button></div>'
         f'<div class="grid">{tiles}</div>'
         '<div class="empty-grid" id="nores" style="display:none">No story on this page '
         'matches that. Press Enter to search every article.</div>'
         '</div><div>'
-        + differ_panel(clusters)
+        + latest_panel(clusters)
         + people_panel(people)
         + about_panel(unread)
         + '</div></div>'
-        + OPEN_TARGET
+        + OPEN_TARGET + SORT_JS
     )
     return shell("Newseye - Kenyan media coverage", "Stories", body, generated,
                  search="filter")
+
+
+def dashboard_counts(clusters, stats):
+    """Three counts, each one a story page can show."""
+    if not clusters:
+        return ""
+    differing = sum(1 for c in clusters if gaps_in(c))
+    # "General" is the label for a story no topic fitted, so it never "leads"
+    topics = Counter(c.get("topic_label") or "General" for c in clusters)
+    named = [(t, n) for t, n in topics.most_common() if t != "General"]
+    if named:
+        top = [t for t, n in named if n == named[0][1]]
+        lead = (f"{e(top[0])} leads: {plural(named[0][1], 'story', 'stories')} of the "
+                f"{len(clusters)} here." if len(top) == 1 else
+                f"{e(listing(top))} lead: {named[0][1]} stories each, of the {len(clusters)} here.")
+    else:
+        lead = f"No one topic: {len(clusters)} stories with no clear topic."
+    collected = (f"{stats['articles']:,} articles collected &middot; {stats['usable']:,} "
+                 "stories in the database" if stats["articles"] else "")
+    return (
+        '<div class="stats">'
+        f'<div class="stat"><span class="t">Outlets read</span><span class="n">{stats["outlets"]}'
+        '</span><small>Kenyan news sites, through their public feeds</small></div>'
+        f'<div class="stat hi"><span class="t">Stories with differences</span>'
+        f'<span class="n">{differing}</span><small>of the {len(clusters)} here: facts not in '
+        'every outlet</small></div>'
+        '<div class="stat wide"><span class="k">In this snapshot</span>'
+        f'<span class="s">{lead}</span><small>{collected}</small></div></div>')
+
+
+def categories_section(clusters):
+    """Browse by news category: a button per topic on the page, most stories first.
+
+    General is the label for a story no topic fitted, so it comes last whatever its
+    count. The filtering is done in the reader's browser, together with the search
+    box (SEARCH_JS), so it needs no server and no network.
+    """
+    counts = Counter(c.get("topic_label") or "General" for c in clusters)
+    if len(counts) < 2:
+        return ""
+    topics = sorted(counts, key=lambda t: (t == "General", -counts[t], t))
+    button = ('<button type="button" class="{on}" aria-pressed="{pressed}" data-topic="{topic}">'
+              '<b>{name}</b><small>{count}</small></button>')
+    cards = [button.format(on="on", pressed="true", topic="", name="All stories",
+                           count=plural(len(clusters), "story", "stories"))]
+    cards += [button.format(on="", pressed="false", topic=e(t), name=e(t),
+                            count=plural(counts[t], "story", "stories")) for t in topics]
+    return ('<section class="catblock"><div class="colhead"><h2>Browse by category</h2></div>'
+            '<p class="under">Pick a category to show only its stories.</p>'
+            f'<div class="cats" role="group" aria-label="News categories">{"".join(cards)}'
+            '</div></section>')
+
+
+def latest_panel(clusters, limit=4):
+    """The stories with the newest articles in this snapshot."""
+    dated = sorted(((newest(c), c) for c in clusters if newest(c)),
+                   key=lambda t: -t[0].timestamp())[:limit]
+    if not dated:
+        return ""
+    rows = "".join(
+        f'<li><a href="story-{c["cluster_id"]}.html"><span><b>'
+        f'{e(trim(c.get("title_summary") or "Untitled story", 72))}</b><small>'
+        f'{plural(len(c["articles"]), "article")} &middot; '
+        f'{plural(len({a["source"] for a in c["articles"]}), "outlet")}</small></span>'
+        f'<time>{e(day(when))}</time></a></li>'
+        for when, c in dated)
+    return ('<div class="panel"><h4>Latest stories</h4><p class="sub">By their newest article '
+            f'in this snapshot</p><ul class="latest">{rows}</ul></div>')
+
+
+def newest(cluster):
+    """When the story's latest article was published; None for an export made
+    before articles carried their dates."""
+    dates = [datetime.fromisoformat(str(a["published"])) for a in cluster["articles"]
+             if a.get("published")]
+    return max(dates) if dates else None
+
+
+def contested_page(clusters, generated, days=7):
+    """The latest stories whose coverage reports a dispute, most contested first.
+
+    What counts is what the headlines and quotes report - accusations, denials,
+    rows, probes, arrests (backend/analysis/contention.py) - and each card says
+    what was counted. It is not a finding that the outlets disagree, and the page
+    says that too. The days count back from the newest article in the build.
+    """
+    from backend.analysis.contention import LISTED, contention
+
+    dated = {c["cluster_id"]: newest(c) for c in clusters}
+    end = max((d for d in dated.values() if d), default=None)
+    rows = []
+    for cluster in clusters:
+        when = dated[cluster["cluster_id"]]
+        if end and (when is None or when < end - timedelta(days=days)):
+            continue
+        score, reasons = contention([a["title"] for a in cluster["articles"]],
+                                    cluster.get("topic_label"), cluster.get("quotes"))
+        if score >= LISTED:
+            rows.append((score, when, cluster, reasons))
+    rows.sort(key=lambda t: (-t[0], -(t[1].timestamp() if t[1] else 0)))
+    window = (f"the {days} days to {end:%d %B %Y}" if end
+              else "this build (its export has no dates, so every story is included)")
+    tiles = "".join(story_tile(c, " · ".join(reasons)) for _, _, c, reasons in rows)
+    body = (
+        '<section class="intro"><h1>Contested stories</h1>'
+        '<p>The latest stories whose coverage reports a dispute: headlines about '
+        'accusations, denials, rows, probes, arrests or protests, and quotes reported as '
+        'criticism or denial. Each card says what was counted. This is about what the '
+        'stories report, not about which outlet is right: open one to compare how each '
+        'outlet covered it.</p>'
+        f'<p class="meta">{plural(len(rows), "story", "stories")} from {e(window)}, most '
+        'contested first.</p></section>'
+        + (f'<div class="grid">{tiles}</div>' if rows else
+           '<div class="empty-grid">No story in this window has headlines or quotes that '
+           'report a dispute.</div>'))
+    return shell("Contested stories - Newseye", "Contested", body, generated)
 
 
 def about_panel(unread):
@@ -861,6 +1249,8 @@ def about_panel(unread):
 
 
 def story_page(cluster, generated, people_here=()):
+    """The comparison for one story: a tab bar over its sections, and beside them
+    who covered it, which outlets could not be read, and what differs."""
     coherence = cluster.get("coherence") or 0
     sources = len({a["source"] for a in cluster["articles"]})
     loose = ""
@@ -870,30 +1260,113 @@ def story_page(cluster, generated, people_here=()):
                  f'0.50 floor. Asking who left a fact out only means something when every '
                  f'outlet is covering the same event, so read the comparison below with '
                  f'that in mind.</div>')
+    dates = sorted(datetime.fromisoformat(str(a["published"])) for a in cluster["articles"]
+                   if a.get("published"))
+    when = (f' &middot; first reported {day(dates[0])} &middot; latest {day(dates[-1])}'
+            if dates else "")
+    quotes, tone = quotes_block(cluster), framing_block(cluster)
+    # (id, tab label, count shown on the tab, section)
+    # the headlines are part of the overview: they are what a reader checks first
+    headlines = ('<div class="heads-block" id="sources"><h3 class="sub">Headlines</h3>'
+                 '<p class="hint">Each outlet’s own headline, linking to its article.</p>'
+                 + headline_list(cluster) + '</div>')
+    sections = [
+        ("overview", "Overview", None,
+         loose + story_glance(cluster) + headlines + people_chips(people_here)),
+        ("facts", "Facts", len(cluster["consensus"] or []),
+         '<h2>What each outlet reported</h2><p class="hint">Each row is a fact from one of '
+         'the articles. Read across to see which outlets reported it.</p>'
+         + coverage_table(cluster)),
+    ]
+    if quotes:
+        sections.append(("quotes", "Quotes", len(cluster.get("quotes") or []), quotes))
+    if tone:
+        sections.append(("tone", "Tone", None, tone))
+    sections.append(("numbers", "Numbers", len(cluster.get("figure_digest") or []),
+                     '<h2>The numbers</h2><p class="hint">Each number with the sentence it '
+                     'came from. Read the sentence: two numbers can count different '
+                     'things.</p>' + figures_block(cluster)))
+    tabbar = "".join(
+        f'<a href="#{ident}" role="tab" aria-selected="{"true" if i == 0 else "false"}"'
+        f'{" class=on" if i == 0 else ""}>{label}'
+        + (f"<small>{count}</small>" if count else "") + "</a>"
+        for i, (ident, label, count, _) in enumerate(sections))
+    panels = "".join(f'<section class="card tabpanel" id="{ident}" role="tabpanel">{html}'
+                     '</section>' for ident, _, _, html in sections)
     body = (
-        f'<a class="back" href="index.html">{ICON["arrow"]}All stories</a>'
-        '<div class="sheet"><header>'
+        f'<div class="crumb"><a href="index.html">Stories</a><span>/</span>'
+        f'<span>Story {cluster["cluster_id"]}</span></div>'
+        '<div class="phead"><div>'
         f'<h1>{e(trim(cluster.get("title_summary") or "Untitled story", 110))}</h1>'
-        f'<p class="lede">How {sources} Kenyan outlets covered this story.</p>'
-        '</header>'
-        + loose
-        + story_glance(cluster)
-        + '<h3 class="sub">Headlines</h3>' + headline_list(cluster)
-        + people_chips(people_here)
-        + '<h3 class="sub" id="facts">What each outlet reported</h3>'
-        + '<p class="hint">Each row is a fact from one of the articles. Read across to see '
-          'which outlets reported it.</p>'
-        + coverage_table(cluster)
-        + quotes_block(cluster)
-        + framing_block(cluster)
-        + '<h3 class="sub" id="numbers">The numbers</h3>'
-        + '<p class="hint">Each number with the sentence it came from. Read the sentence: '
-          'two numbers can count different things.</p>'
-        + figures_block(cluster)
-        + '<footer class="end">Newseye compares what each outlet included. It does not '
-          'rate outlets or tell you who to trust.</footer></div>'
+        f'<p class="pmeta">How {sources} Kenyan outlets covered this story &middot; '
+        f'{plural(len(cluster["articles"]), "article")}{when}</p></div>'
+        '<a class="btn line" href="#sources">Read the originals</a></div>'
+        '<div class="tabs">'
+        f'<nav class="tabbar" role="tablist" aria-label="Sections of this story">{tabbar}</nav>'
+        f'<div class="story"><div>{panels}'
+        '<footer class="end">Newseye compares what each outlet included. It does not rate '
+        'outlets or tell you who to trust.</footer></div>'
+        f'{story_side(cluster)}</div></div>'
+        + TABS_JS
     )
     return shell(cluster.get("title_summary") or "Story", "Stories", body, generated)
+
+
+def initials(outlet):
+    """'Nation Africa' -> 'NA', 'The Kenya Times' -> 'KT', 'KBC' -> 'KB'."""
+    words = [w for w in re.findall(r"[A-Za-z0-9]+", outlet) if w.lower() != "the"]
+    letters = "".join(w[0] for w in words[:2]) if len(words) > 1 else (words or ["?"])[0][:2]
+    return letters.upper()
+
+
+def story_side(cluster):
+    """Who covered the story, and what differs: counts the sections show, the
+    outlets that could not be read named as such, never as leaving facts out."""
+    from backend.analysis.divergence import differences
+
+    read, unread = read_outlets(cluster)
+    gaps = gaps_in(cluster)
+    found = differences(cluster)
+    signals = []
+    if gaps:
+        signals.append(f'<span class="badge gap">{plural(gaps, "fact")} not in every '
+                       'outlet</span>')
+    signals += [f'<span class="badge sim">{e(r)}</span>' for r in found["reasons"]]
+    if not signals:
+        signals.append('<span class="badge ok">same facts in every outlet we read</span>')
+    # each outlet's link goes to an article that could be read, where it has one
+    first = {}
+    for article in cluster["articles"]:
+        have = first.get(article["source"])
+        if have is None or (article["fetched"] and not have["fetched"]):
+            first[article["source"]] = article
+    rows = []
+    for outlet in sorted(set(read) | set(unread)):
+        link = web_link(first[outlet].get("url"))
+        if outlet in unread:
+            end = '<span class="tag">could not open</span>'
+        elif link:
+            end = (f'<a class="go" href="{link}" target="_blank" rel="noopener noreferrer">'
+                   f'Read {ICON["out"]}</a>')
+        else:
+            end = ""
+        rows.append(f'<li{" class=no" if outlet in unread else ""}><span class="av">'
+                    f'{e(initials(outlet))}</span><span>{e(outlet)}</span>{end}</li>')
+    could = (f"{len(read)} read &middot; {len(unread)} could not open" if unread
+             else "all could be read")
+    return (
+        '<aside class="side"><div class="panel"><h4>Coverage at a glance</h4>'
+        '<p class="sub">The outlets that covered this story</p>'
+        '<div class="minis">'
+        f'<div class="mini"><span class="t">Outlets</span><span class="n">{len(read) + len(unread)}'
+        f'</span><small>{could}</small></div>'
+        f'<div class="mini"><span class="t">Articles</span><span class="n">'
+        f'{len(cluster["articles"])}</span><small>in this story</small></div></div>'
+        f'<h5>What differs</h5><div class="badges" style="justify-content:flex-start">'
+        f'{"".join(signals)}</div>'
+        f'<h5>Outlets</h5><ul class="outlets">{"".join(rows)}</ul>'
+        '<p class="fine">Differences show what each outlet included and how it worded it. '
+        'They do not say which account is correct.</p></div></aside>')
 
 
 def story_glance(cluster):
@@ -1215,11 +1688,11 @@ if (!INDEX) {
 
 def search_page(generated):
     body = (
-        '<div class="sheet"><header>'
-        '<h1>Search every article</h1>'
-        '<p class="lede">Everything Newseye has collected, not only the stories on the '
-        'dashboard. Articles that several outlets wrote about the same event are shown '
-        'together as one story.</p></header>'
+        '<section class="intro"><h1>Search every article</h1>'
+        '<p>Everything Newseye has collected, not only the stories on the dashboard. '
+        'Articles that several outlets wrote about the same event are shown together as '
+        'one story.</p></section>'
+        '<div class="card" style="margin-top:22px">'
         f'<form id="sform" class="bigsearch" role="search">{ICON["search"]}'
         '<input id="sq" name="q" type="search" autocomplete="off" '
         'placeholder="e.g. police shot protesters" aria-label="Search every article">'
@@ -1356,29 +1829,6 @@ def people_chips(people_here):
             f'them across all stories.</p><div class="pchips">{chips}</div>')
 
 
-def differ_panel(clusters, limit=5):
-    """The stories where outlets' coverage differs most, each with its reasons.
-
-    Counts only differences a reader can check on the story page - related
-    wording, figures, reworded quotes, a wide tone gap - never a verdict about
-    which outlet is right. The reasons are shown so a story's place is never a
-    mystery, and stories with no checkable difference are left out.
-    """
-    from backend.analysis.divergence import differences
-
-    scored = [(differences(c), c) for c in clusters]
-    scored = sorted((t for t in scored if t[0]["score"]), key=lambda t: -t[0]["score"])[:limit]
-    if not scored:
-        return ""
-    rows = "".join(
-        f'<div class="r"><b>{i}</b><div><a href="story-{c["cluster_id"]}.html">'
-        f'<span>{e(trim(c.get("title_summary") or "Untitled story", 80))}</span></a>'
-        f'<small>{e(" · ".join(d["reasons"]))}</small></div></div>'
-        for i, (d, c) in enumerate(scored, start=1))
-    return ('<div class="panel"><h4>Start here: where outlets differ most</h4>'
-            f'<div class="rank">{rows}</div></div>')
-
-
 def people_panel(people):
     if not people or not people["people"]:
         return ""
@@ -1387,8 +1837,8 @@ def people_panel(people):
         f'<span>{e(p["name"])}</span></a>'
         f'<small>{p["articles"]} articles &middot; {len(p["outlets"])} outlets</small></div></div>'
         for i, p in enumerate(people["people"][:6], start=1))
-    return ('<div class="panel"><h4>People in the news</h4>'
-            f'<div class="rank">{rows}</div>'
+    return ('<div class="panel"><h4>People in the news</h4><p class="sub">Named most often '
+            f'across the outlets</p><div class="rank">{rows}</div>'
             '<a class="more" href="people.html">How each outlet presents them &rarr;</a></div>')
 
 
@@ -1446,11 +1896,50 @@ def words_used(s, limit=4):
                              for t, v in groups.items())
 
 
-def tone_cell(s):
-    tone = s.get("tone")
+def tone_bar(tone):
+    """A tone mix as one bar: negative, neutral, positive, in that order, with the
+    label and the count in words beside it, so the colours are never the only key."""
     if not tone:
         return '<span class="few">too few headlines</span>'
-    return (f'{e(tone["label"])}<small>{tone["n"]} headlines and opening lines</small>')
+    negative, positive = tone["negative"], tone["positive"]
+    neutral = max(0.0, 1 - negative - positive)
+    words = f"{negative:.0%} negative, {neutral:.0%} neutral, {positive:.0%} positive"
+    label = f'{e(tone["label"])} &middot; ' if tone.get("label") else ""
+    return (f'<div class="tbar" role="img" aria-label="{words}" title="{words}">'
+            f'<i class="ng" style="width:{negative * 100:.1f}%"></i>'
+            f'<i class="nu" style="width:{neutral * 100:.1f}%"></i>'
+            f'<i class="ps" style="width:{positive * 100:.1f}%"></i></div>'
+            f'<small>{label}{tone["n"]} headlines &amp; openings</small>')
+
+
+TONE_KEY = ('<p class="tkey"><span class="ng">negative</span><span>neutral</span>'
+            '<span class="ps">positive</span></p>')
+
+
+def tone_cell(s):
+    return tone_bar(s.get("tone"))
+
+
+def overall_tone(person):
+    """Every outlet's tone mix for a person, weighted by its headline count."""
+    tones = [s["tone"] for s in person["outlets"].values() if s.get("tone")]
+    n = sum(t["n"] for t in tones)
+    if not n:
+        return None
+    return {"n": n, "negative": sum(t["negative"] * t["n"] for t in tones) / n,
+            "positive": sum(t["positive"] * t["n"] for t in tones) / n}
+
+
+def overall_title(person):
+    """The title most outlets' headlines give them: 'President', 'DCP leader'."""
+    titles = Counter()
+    forms = {}
+    for s in person["outlets"].values():
+        for title, n in s["titles"].items():
+            if title != "(no title)":
+                titles[title] += n
+                forms.setdefault(title, s["title_forms"].get(title, title))
+    return forms[titles.most_common(1)[0][0]] if titles else ""
 
 
 def anchor(outlet):
@@ -1487,30 +1976,28 @@ def glance_facts(named, absent):
 
 
 def glance_table(named, absent):
-    """One row per outlet: how often, how they appear, the verbs, the title, the tone."""
-    share = {o: s["articles"] / s["outlet_articles"] for o, s in named if s["outlet_articles"]}
-    top = max(share.values(), default=0) or 1
+    """One row per outlet: what it calls them and the tone of its headlines.
+
+    The table also had columns for how often each outlet names them, the part it
+    most often gives them and the verbs for their words. They made the widest
+    table on the site, and the part and the verbs read better beside the
+    headlines they come from, so they are in each outlet's card below.
+    """
     rows = []
     for outlet, s in named:
-        cover = (f'<div class="meter"><i style="width:{share.get(outlet, 0) / top * 100:.0f}%">'
-                 f'</i></div><small>{s["articles"]} &middot; {share.get(outlet, 0):.1%} of its '
-                 f'articles</small>')
         name = outlet_label(outlet)
+        count = f'<small>{plural(s["articles"], "article")}</small>'
         if s["articles"] < PEOPLE_CARD_MIN:
-            rest = '<td colspan="4" class="few">Too few articles to compare</td>'
+            rest = '<td colspan="2" class="few">Too few articles to compare</td>'
         else:
             name = f'<a href="#{anchor(outlet)}">{name}</a>'
-            role, part = top_role(s)
-            rest = (f'<td>{e(ROLE_PHRASE[role])}<small>{part:.0%} of mentions</small></td>'
-                    f'<td>{words_used(s) or "&mdash;"}</td>'
-                    f'<td>{e(usual_title(s)) or "&mdash;"}</td>'
+            rest = (f'<td>{e(usual_title(s)) or "&mdash;"}</td>'
                     f'<td>{tone_cell(s)}</td>')
-        rows.append(f'<tr><td class="o">{name}</td><td class="cov">{cover}</td>{rest}</tr>')
+        rows.append(f'<tr><td class="o">{name}{count}</td>{rest}</tr>')
     for outlet, n in absent:
         rows.append(f'<tr class="none"><td class="o">{outlet_label(outlet)}</td>'
-                    f'<td colspan="5">Never named in its {n:,} articles</td></tr>')
+                    f'<td colspan="2">Never named in its {n:,} articles</td></tr>')
     return ('<div class="scroll"><table class="glance"><thead><tr><th>Outlet</th>'
-            '<th>How often</th><th>How they appear</th><th>Verbs for what they said</th>'
             '<th>Called</th><th>Headline tone</th>'
             f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>')
 
@@ -1524,12 +2011,16 @@ def outlet_card(outlet, s, name):
     headlines themselves, so the card is one sentence and those.
     """
     role, _ = top_role(s)
+    verbs = words_used(s)
     return (f'<details class="pdet" id="{anchor(outlet)}"><summary><b>{e(outlet)}</b>'
             f'<span>{plural(s["articles"], "article")} &middot; '
             f'{e(ROLE_PHRASE[role].lower())}</span></summary>'
             f'<div class="pbody"><p class="psum">In {e(outlet)}\u2019s headlines, '
             f'{role_sentence(name, s)}</p>'
-            f'<ul class="heads ph">{person_headlines(s["records"])}</ul>'
+            # words_used names the verbs of what they do when the outlet never quotes them
+            + (f'<p class="psum">{"Words for what they said: " if s["speaking_verbs"] else ""}'
+               f'{verbs}</p>' if verbs else "")
+            + f'<ul class="heads ph">{person_headlines(s["records"])}</ul>'
             '<p class="go">Open a headline to read the full article on '
             f'{e(outlet)}\u2019s site.</p></div></details>')
 
@@ -1573,8 +2064,8 @@ def method_body(aliases, targeted=False):
         'even when the article itself is paywalled.</p>'
         '<p>KBC is the state broadcaster and Kenya News the government\u2019s own news '
         'agency: covering government activity is their remit.</p>'
-        '<p>On a hand-checked sample of 40 headline mentions the role was right 34 '
-        'times. A different person with the same name can be counted under the '
+        '<p>On a check of 40 mentions from articles collected later, the role was right '
+        '37 times. A different person with the same name can be counted under the '
         'better-known one.</p>'
         + tone
         + '<p>Nothing here rates an outlet or a person. The conclusion is yours.</p>')
@@ -1589,54 +2080,96 @@ def person_page(person, people, generated):
     period = f'{day(people["first"])} to {day(people["last"])} {people["last"]:%Y}'
     detailed = "".join(outlet_card(o, s, person["name"]) for o, s in named
                        if s["articles"] >= PEOPLE_CARD_MIN)
+    title = overall_title(person)
+    never = (f"never named by {plural(len(absent), 'outlet')}" if absent
+             else "named by every outlet")
+    # tone stays in the table below, beside the counts it rests on: it is the
+    # least certain reading on the page, so it is not one of the headline numbers
+    counts = (
+        '<div class="stats three">'
+        f'<div class="stat"><span class="t">Articles naming them</span><span class="n">'
+        f'{person["articles"]:,}</span><small>headlines and opening lines</small></div>'
+        f'<div class="stat hi"><span class="t">Outlets</span><span class="n">{len(named)} of '
+        f'{len(FEEDS)}</span><small>{e(never)}</small></div>'
+        f'<div class="stat"><span class="t">Period</span><span class="s">{e(period)}</span>'
+        '<small>every stored headline naming them</small></div></div>')
     body = (
-        f'<a class="back" href="people.html">{ICON["arrow"]}All people</a>'
-        '<div class="sheet"><header>'
+        f'<div class="crumb"><a href="people.html">People</a><span>/</span>'
+        f'<span>{e(person["name"])}</span></div>'
+        '<div class="phead"><div>'
         f'<h1>{e(person["name"])}</h1>'
-        f'<p class="lede">Named in {person["articles"]} articles by {len(named)} of '
-        f'{len(FEEDS)} outlets &middot; {period}</p>'
-        '</header>'
-        + (f'<ul class="facts">{facts}</ul>' if facts else "")
-        + '<h3 class="sub">Outlet by outlet</h3>'
-        + glance_table(named, absent)
+        f'<p class="pmeta">{f"<span class=kpill>{e(title)}</span>" if title else ""}'
+        f'Named in {person["articles"]} articles by {len(named)} of {len(FEEDS)} outlets'
+        f' &middot; {period}</p></div></div>'
+        + counts
+        + (f'<section class="card"><h2>At a glance</h2><ul class="facts">{facts}</ul></section>'
+           if facts else "")
+        + '<section class="card"><h2>Outlet by outlet</h2>'
         + '<p class="hint">Counts reflect which stories each outlet covered, as well as how '
           'it wrote them. '
         + (TONE_TARGETED if tone_targeted(outlets) else TONE_SENTENCE)
         + ' It is a hint, not a verdict, and it can be wrong. These pages point to the '
           'reporting; they do not replace it.</p>'
-        + '<h3 class="sub">Read the coverage yourself</h3>'
-        + '<p class="hint">Open an outlet to see the headlines behind its row in the '
-          'table.</p>'
+        + glance_table(named, absent) + TONE_KEY + '</section>'
+        + '<section class="card"><h2>Read the coverage yourself</h2>'
+        + '<p class="hint">Open an outlet to see how its headlines present them: the part '
+          'they most often play, the words used for what they said, and the headlines '
+          'themselves.</p>'
         + detailed
+        + '</section>'
         + OPEN_TARGET
         + '<details class="pdet method"><summary><b>How this works</b></summary>'
           f'<div class="pbody">{method_body(", ".join(person["aliases"]), tone_targeted(outlets))}'
           '</div></details>'
-        + '</div>'
     )
     return shell(person["name"], "People", body, generated)
 
 
 def people_index(people, generated):
-    tiles = []
-    for p in people["people"]:
+    """Everyone named often enough to compare, most named first, as one table."""
+    rows = []
+    for i, p in enumerate(people["people"], start=1):
         absent = sorted((o for o in p["totals"] if o not in p["outlets"]),
                         key=lambda o: -p["totals"][o])
-        if absent:
-            more = f" and {len(absent) - 2} more" if len(absent) > 2 else ""
-            missing = f'<div class="srcline">Never named by {e(", ".join(absent[:2]))}{more}</div>'
-        else:
-            missing = '<div class="srcline">Named by every outlet</div>'
-        tiles.append(
-            f'<a class="tile" href="person-{e(p["id"])}.html"><h3>{e(p["name"])}</h3>'
-            f'<div class="srcline">{p["articles"]} articles &middot; '
-            f'{len(p["outlets"])} of {len(FEEDS)} outlets</div>{missing}</a>')
+        never = (f"never named by {e(listing(absent[:2]))}"
+                 + (f" and {len(absent) - 2} more" if len(absent) > 2 else "")
+                 if absent else "named by every outlet")
+        title = overall_title(p)
+        page = f'person-{e(p["id"])}.html'
+        rows.append(
+            f'<tr><td class="rk">{i:02d}</td>'
+            f'<td><a class="nm" href="{page}">{e(p["name"])}</a>'
+            + (f'<small>{e(title)}</small>' if title else "") + '</td>'
+            + f'<td class="num">{p["articles"]:,}</td>'
+            f'<td class="num">{len(p["outlets"])} of {len(FEEDS)}<small>{never}</small></td>'
+            f'<td>{tone_bar(overall_tone(p))}</td>'
+            f'<td><a class="open" href="{page}">View &rarr;</a></td></tr>')
+    period = f'{day(people["first"])} to {day(people["last"])} {people["last"]:%Y}'
+    top = people["people"][0] if people["people"] else None
+    counts = (
+        '<div class="stats">'
+        f'<div class="stat"><span class="t">People with a page</span><span class="n">'
+        f'{len(people["people"])}</span><small>named in {PEOPLE_MIN_ARTICLES}+ articles by '
+        f'{PEOPLE_MIN_OUTLETS}+ outlets</small></div>'
+        + (f'<div class="stat hi"><span class="t">Named most</span><span class="s">'
+           f'{e(top["name"])}</span><small>{top["articles"]:,} articles</small></div>'
+           if top else "")
+        + f'<div class="stat"><span class="t">Outlets</span><span class="n">{len(FEEDS)}</span>'
+        '<small>headlines and opening lines read</small></div>'
+        f'<div class="stat"><span class="t">Period</span><span class="s">{e(period)}</span>'
+        '<small>every stored headline</small></div></div>')
     body = (
-        '<div class="colhead"><h2>People in the news</h2>'
-        f'<span class="hint">{len(people["people"])} people &middot; '
-        f'{day(people["first"])} to {day(people["last"])} {people["last"]:%Y}</span></div>'
-        '<p class="hint">Pick a person to see how each outlet covers them, side by side.</p>'
-        + f'<div class="grid">{"".join(tiles)}</div>')
+        '<section class="intro"><h1>People in the news</h1>'
+        '<p>How each outlet presents the people it names most: how often, in what role, '
+        'with which words. Pick a person to see the outlets side by side.</p></section>'
+        + counts
+        + '<section class="card"><h2>Most named people</h2>'
+        '<p class="hint">Ranked by the articles naming them. Headline tone is an automatic '
+        'reading and can be wrong: open a person to see the headlines behind it.</p>'
+        '<div class="scroll"><table class="ptable"><thead><tr><th>#</th><th>Person</th>'
+        '<th>Articles</th><th>Outlets</th><th>Headline tone</th>'
+        f'<th></th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+        + TONE_KEY + '</section>')
     return shell("People - Newseye", "People", body, generated)
 
 
@@ -1678,6 +2211,8 @@ def build(export_path, out_dir):
 
     with open(os.path.join(out_dir, "index.html"), "w", encoding="utf-8") as fh:
         fh.write(dashboard(clusters, generated, stats, people, data.get("selection")))
+    with open(os.path.join(out_dir, "contested.html"), "w", encoding="utf-8") as fh:
+        fh.write(contested_page(clusters, generated, data.get("contested_days") or 7))
     for cluster in clusters:
         here = {i for a in cluster["articles"] for i in named_in.get(a.get("url"), ())}
         path = os.path.join(out_dir, f"story-{cluster['cluster_id']}.html")
@@ -1706,7 +2241,7 @@ def build(export_path, out_dir):
         print(f"  search index: {index['count']:,} articles, "
               f"{os.path.getsize(index_path) / 1e6:.1f} MB")
 
-    print(f"Wrote {len(clusters) + 2} pages to {out_dir}/")
+    print(f"Wrote {len(clusters) + 3} pages to {out_dir}/")
     print(f"  open {os.path.join(out_dir, 'index.html')}")
 
 

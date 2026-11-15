@@ -3,3 +3,6 @@
 
 # Linting and import ordering, configured in pyproject.toml.
 ruff==0.16.8
+
+# FastAPI's test client (backend/scripts/test_api.py)
+httpx==0.28.1

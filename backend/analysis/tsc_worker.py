@@ -127,7 +127,13 @@ def main():
                 f"GRU-TSC weights missing at {weights}; download them once with: "
                 f"{sys.executable} -m NewsSentiment download")})
             return 1
-        classifier = TargetSentimentClassifier()
+        # fine-tuned weights, if the caller asked for them (NEWSMTSC_STATE_DICT)
+        tuned = os.environ.get("NEWSMTSC_STATE_DICT") or None
+        if tuned and not os.path.isfile(tuned):
+            write(answers, {"ready": False,
+                            "error": f"NEWSMTSC_STATE_DICT names no file: {tuned}"})
+            return 1
+        classifier = TargetSentimentClassifier(state_dict=tuned)
     except Exception as exc:
         write(answers, {"ready": False, "error": f"{type(exc).__name__}: {exc}"})
         return 1
@@ -138,6 +144,7 @@ def main():
         package = "unknown"
     import torch
     write(answers, {"ready": True, "package": "NewsSentiment " + package,
+                    "weights": os.path.basename(tuned) if tuned else "grutsc_v1-0-0",
                     "torch": torch.__version__,
                     "python": ".".join(map(str, sys.version_info[:3]))})
 

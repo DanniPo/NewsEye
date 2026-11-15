@@ -27,13 +27,25 @@ import queue
 import subprocess
 import threading
 
-from backend.config import NEWSMTSC_PYTHON, TARGETED_CACHE
+from backend.config import NEWSMTSC_PYTHON, NEWSMTSC_STATE_DICT, TARGETED_CACHE
 
 WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tsc_worker.py")
 LOG = os.path.join("logs", "tsc_worker.log")
 LABELS = ("negative", "neutral", "positive")
+
+
+def model_key(state_dict=None):
+    """Which weights a score came from. A different model, version or weights file
+    starts a fresh cache; the published weights keep the key they always had."""
+    key = "NewsSentiment-1.2.28/grutsc_v1-0-0"
+    if state_dict:
+        stat = os.stat(state_dict)
+        key += f"+{os.path.basename(state_dict)}:{stat.st_size}:{int(stat.st_mtime)}"
+    return key
+
+
 # the model these scores come from; a different model or version starts a fresh cache
-MODEL_KEY = "NewsSentiment-1.2.28/grutsc_v1-0-0"
+MODEL_KEY = model_key(NEWSMTSC_STATE_DICT)
 # the first start downloads the model weights, a few hundred MB
 LOAD_TIMEOUT = 1200
 ANSWER_TIMEOUT = 600
@@ -50,7 +62,7 @@ class WorkerUnavailable(RuntimeError):
 
 
 class _Worker:
-    def __init__(self, python, script):
+    def __init__(self, python, script, env=None):
         if not python or not os.path.exists(python):
             raise WorkerUnavailable(f"no NewsSentiment interpreter at {python!r}; "
                                     "see eval/framing/README.md")
@@ -59,7 +71,7 @@ class _Worker:
         # -I: isolated, so this folder's modules cannot shadow the worker's imports
         self.process = subprocess.Popen(
             [python, "-I", "-u", script], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=self.log, text=True, encoding="utf-8", bufsize=1)
+            stderr=self.log, text=True, encoding="utf-8", bufsize=1, env=env)
         # Windows pipes cannot be read with a timeout, so a thread reads them
         self.lines = queue.Queue()
         threading.Thread(target=self._pump, daemon=True).start()

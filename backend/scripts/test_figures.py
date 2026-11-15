@@ -10,7 +10,7 @@ digest_groups: one group across two outlets, or none.
 """
 import sys
 
-from backend.analysis.digest import build_digest, digest_groups
+from backend.analysis.digest import build_digest, cited_authority, digest_groups
 from backend.analysis.figures import parse_figures
 from backend.scripts.testkit import case, report
 
@@ -150,6 +150,14 @@ def results():
         group = cross_source_group(claims)
         rows.append(case(name, "grouped across two outlets",
                          outcome(group) + ("" if group else f" - {why}"), None))
+    # last, so the case ids the report cites stay as they are
+    pronoun = cited_authority('"Now, salaried people, the 3.5 million Kenyans who are in formal '
+                              'employment," Mbadi said.')
+    agency = cited_authority("According to WHO, 3 million doses were delivered.")
+    rows.append(case('a figure is never credited to the pronoun "who" (DEF-45)',
+                     "None for the pronoun; WHO for the agency",
+                     f"{pronoun} for the pronoun; {agency} for the agency",
+                     pronoun is None and agency == "WHO"))
     return rows
 
 

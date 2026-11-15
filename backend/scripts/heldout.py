@@ -1,6 +1,6 @@
 """Held-out evaluation: accuracy on data no part of development ever saw.
 
-The development hand-checks (README) drove the fixes, so they measure the system
+The development checks (README) drove the fixes, so they measure the system
 on the data it was tuned on - the name list was even built from the headlines it
 was scored on. This draws fresh samples from articles ingested after the code
 froze, for a person to mark right or wrong, then scores the marks against

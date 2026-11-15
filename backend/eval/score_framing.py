@@ -25,6 +25,7 @@ import argparse
 import csv
 import json
 import os
+import random
 import sys
 from collections import Counter
 from datetime import datetime
@@ -193,6 +194,59 @@ def subsets(row):
             f"gold: {row['status']}"]
 
 
+def f1m_interval(truth, values, resamples=5000, seed=0):
+    """95% interval for one method's F1m, resampling items with replacement."""
+    rng, n, found = random.Random(seed), len(truth), []
+    for _ in range(resamples):
+        picks = [rng.randrange(n) for _ in range(n)]
+        found.append(metrics.f1m([truth[i] for i in picks], [values[i] for i in picks]))
+    found.sort()
+    return found[int(0.025 * resamples)], found[int(0.975 * resamples) - 1]
+
+
+def people_section(dev, test):
+    """People alone: the only items the site scores with the targeted model.
+
+    The overall comparison above covers every entity type, so it does not describe
+    what the site does. Two readings: thresholds tuned on the dev split's people,
+    and the thresholds the site uses.
+    """
+    from backend.config import FRAMING_TARGETED_THRESHOLD
+
+    dev = [r for r in dev if r["entity_type"] == "PERSON" and r["targeted"] is not None]
+    test = [r for r in test if r["entity_type"] == "PERSON" and r["targeted"] is not None]
+    if len(dev) < 10 or len(test) < 10:
+        return []
+    truth = [r["gold"] for r in test]
+    tuned_gold = [r["gold"] for r in dev]
+    tuned = {method: metrics.tune_threshold(tuned_gold, [r[method] for r in dev])
+             for method in ("targeted", "sentence")}
+    settings = (("thresholds tuned on the dev split's people", tuned["targeted"], tuned["sentence"]),
+                ("the site's thresholds", FRAMING_TARGETED_THRESHOLD, 0.15))
+    lines = ["", "## People only (test)", "",
+             f"{len(test)} people: " + ", ".join(f"{k} {v}" for k, v in sorted(Counter(truth).items()))
+             + f". Tuned on {len(dev)} dev people: "
+             + ", ".join(f"{k} {v}" for k, v in sorted(Counter(tuned_gold).items())) + ".", ""]
+    table = [("Thresholds", "Targeted F1m", "Sentence F1m", "Targeted minus sentence")]
+    for title, targeted, sentence in settings:
+        a = [metrics.label(r["targeted"], targeted) for r in test]
+        b = [metrics.label(r["sentence"], sentence) for r in test]
+        diff, low, high, _ = metrics.paired_bootstrap(truth, b, a)
+        a_low, a_high = f1m_interval(truth, a)
+        b_low, b_high = f1m_interval(truth, b)
+        table.append((f"{title} (targeted ±{targeted:.2f}, sentence ±{sentence:.2f})",
+                      f"{metrics.f1m(truth, a):.3f} ({a_low:.3f} to {a_high:.3f})",
+                      f"{metrics.f1m(truth, b):.3f} ({b_low:.3f} to {b_high:.3f})",
+                      f"{diff:+.3f} ({low:+.3f} to {high:+.3f})"))
+    lines += metrics.table(table)
+    site = [metrics.label(r["targeted"], FRAMING_TARGETED_THRESHOLD) for r in test]
+    lines += ["", "Confusion, targeted at the site's threshold (rows gold, columns predicted):", "",
+              *metrics.table([("", *metrics.CLASSES)]
+                             + [(c, *m) for c, m in zip(metrics.CLASSES,
+                                                        metrics.confusion(truth, site), strict=True)])]
+    return lines
+
+
 def report(folder):
     gold = {r["item"]: r for r in read(os.path.join(folder, "gold.csv"))}
     if not gold:
@@ -236,6 +290,7 @@ def report(folder):
         lines.append(f"\nTargeted minus sentence, {title}: F1m {diff:+.3f} "
                      f"(95% CI {low:+.3f} to {high:+.3f}; not better in {not_better:.1%} of "
                      "resamples).")
+    lines += people_section(dev, test)
     lines += ["", "## Subsets (test)", "",
               "F1m per subset; under 20 items is too few to read anything into.", ""]
     groups = {}

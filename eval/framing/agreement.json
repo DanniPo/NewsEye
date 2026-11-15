@@ -1,0 +1,12 @@
+{
+ "kappa_independent": 0.7516896227222175,
+ "n_independent": 215,
+ "kappa_all": 0.7396061269146608,
+ "n_all": 238,
+ "kappa_7point_quadratic": 0.7296980545078735,
+ "agreement_independent": 0.8744186046511628,
+ "statuses": {
+  "agreed": 256,
+  "settled": 44
+ }
+}

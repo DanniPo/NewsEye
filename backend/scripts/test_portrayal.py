@@ -49,7 +49,11 @@ CASES = [
     # "Speaker to Addressee: words" - Gachagua is inside Wanga's words
     ("Wanga to Kalonzo: We loved you until you joined Gachagua",
      "rigathi-gachagua", {"role": "spoken about", "by": "Gladys Wanga"}),
-    # found by the held-out test, 19 Oct: reported speech read as acting
+]
+# Found by the held-out test, 19 Oct. Run after every earlier case: test IDs are
+# numbered by position, and the defect log cites TC-PT-01 to -18 by number.
+HELD_OUT = [
+    # reported speech read as acting
     ("Wiper Patriotic Front leader Kalonzo Musyoka has reaffirmed that the journey to "
      "Canaan remains on course",
      "kalonzo-musyoka", {"role": "speaks", "verb": "reaffirm"}),
@@ -113,6 +117,8 @@ def results():
                          got is not None and role != "speaks"))
     rows += [check(text, person, first_mention(nlp, truecase(text, lexicon), person), wanted)
              for text, person, wanted in TITLE_CASE]
+    rows += [check(text, person, first_mention(nlp, text, person), wanted)
+             for text, person, wanted in HELD_OUT]
     for text, person, wanted in CUT_OFF:
         got = [m["role"] for m in mentions(nlp(CURLY_POSSESSIVE.sub("'", text)), person)]
         rows.append(case(text, f"{person}: {', '.join(wanted)}",

@@ -7,11 +7,17 @@ saved to cluster_analysis as they are produced.
 
     python -m backend.scripts.export_review --top 14
     python -m backend.scripts.export_review 5 32 1
+    python -m backend.scripts.export_review --top 14 --contested 10 --days 7
+
+--contested adds the most contested stories of the last --days days (see
+backend/analysis/contention.py), which the site lists on its Contested page.
+With --contested alone the site holds only those, and its dashboard says so.
 """
 import argparse
 import json
 import time
 
+from backend.analysis.contention import LISTED, headline_score
 from backend.analysis.runner import ClusterNotFound, analyze_cluster
 from backend.config import CLUSTER_MIN_COHERENCE
 from backend.db.connection import get_cursor
@@ -48,6 +54,33 @@ def multi_source_clusters(limit):
         return [r["id"] for r in cur.fetchall()]
 
 
+def contested_clusters(limit, days):
+    """The most contested coherent multi-outlet stories with an article in the
+    last `days` days, by their headlines (quotes are only known after analysis).
+
+    The days count back from the newest article in the database rather than from
+    today, so a corpus whose feeds paused still has a "latest"."""
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT c.id, c.topic_label, array_agg(a.title) AS titles,
+                   count(DISTINCT a.source_name) AS outlets,
+                   max(a.published_utc) AS newest
+            FROM clusters c
+            JOIN cluster_members cm ON cm.cluster_id = c.id
+            JOIN articles a ON a.id = cm.article_id
+            WHERE c.coherence >= %s
+            GROUP BY c.id, c.topic_label
+            HAVING count(DISTINCT a.source_name) >= 2
+               AND max(a.published_utc) >= (SELECT max(published_utc) FROM articles)
+                                           - make_interval(days => %s)
+        """, (CLUSTER_MIN_COHERENCE, days))
+        rows = cur.fetchall()
+    scored = [(headline_score(r["titles"], r["topic_label"]), r) for r in rows]
+    scored = [t for t in scored if t[0] >= LISTED]
+    scored.sort(key=lambda t: (-t[0], -t[1]["outlets"], -t[1]["newest"].timestamp()))
+    return [r["id"] for _, r in scored[:limit]]
+
+
 def analyse(cluster_id):
     """One cluster's page data, from the same deep pass the active tier runs.
 
@@ -72,17 +105,29 @@ def main():
     parser.add_argument("clusters", nargs="*", type=int)
     parser.add_argument("--top", type=int, default=0,
                         help="take the N most source-diverse multi-source clusters")
+    parser.add_argument("--contested", type=int, default=0,
+                        help="add the N most contested stories of the last --days days")
+    parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--out", default=DEFAULT_OUTPUT)
     parser.add_argument("--note", choices=["showcase"], default=None,
                         help="say on the dashboard how the stories were chosen: "
                              "'showcase' for a demonstration set from pick_showcase.py")
     args = parser.parse_args()
 
-    ids = args.clusters or multi_source_clusters(args.top or 8)
+    ids = list(args.clusters)
+    if args.top or not (ids or args.contested):
+        ids += multi_source_clusters(args.top or 8)
+    selection = args.note
+    if args.contested:
+        contested = contested_clusters(args.contested, args.days)
+        print(f"Most contested of the last {args.days} days: {contested}")
+        # a site of contested stories alone is not a typical day, and says so
+        selection = selection or (None if ids else "contested")
+        ids += [i for i in contested if i not in ids]
     print(f"Analysing {len(ids)} clusters: {ids}")
 
     bundle = {"generated_at": time.strftime("%Y-%m-%d %H:%M"), "clusters": [],
-              "selection": args.note}
+              "selection": selection, "contested_days": args.days}
 
     for index, cluster_id in enumerate(ids, start=1):
         print(f"[{index}/{len(ids)}] cluster {cluster_id}...", flush=True)

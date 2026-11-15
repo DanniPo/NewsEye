@@ -46,7 +46,9 @@ AUTHORITY = re.compile(
     r"\b(police|court|judiciary|ministry|government|treasury|parliament|senate|"
     r"KNBS|IEBC|KNCHR|EACC|KRA|CBK|NTSA|IPOA|county|officials?|hospital|morgue|"
     r"union|commission|authority|regulator|census|survey|poll|audit|report|"
-    r"Red Cross|UN|WHO|UNICEF|World Bank|IMF|rights group|watchdog)\b", re.I)
+    # WHO only in capitals: in any case it also matched the pronoun, crediting
+    # "the 3.5 million Kenyans who are employed" to "who" (DEF-45)
+    r"Red Cross|UN|(?-i:WHO)|UNICEF|World Bank|IMF|rights group|watchdog)\b", re.I)
 
 TIER_ORDER = {"shared": 0, "single": 1}
 
@@ -270,11 +272,12 @@ def _spread_limit(members):
     return MAX_DISPLAY_SPREAD
 
 
-def digest_groups(rows):
+def digest_groups(rows, rank=True):
     """Shared figures that appear to count the same thing, for side-by-side display.
 
     A group needs figures from at least two outlets, and a range narrow enough
-    that the figures plausibly measure one quantity.
+    that the figures plausibly measure one quantity. rank=False keeps each group
+    in its stored order instead of ordering it by meaning, which needs MiniLM.
     """
     buckets = {}
     for row in rows:
@@ -289,7 +292,7 @@ def digest_groups(rows):
                 groups.append({
                     "unit": unit,
                     "sources": sorted({r["source"] for r in partition if r["source"]}),
-                    "values": rank_by_similarity(partition),
+                    "values": rank_by_similarity(partition) if rank else partition,
                 })
     return groups
 

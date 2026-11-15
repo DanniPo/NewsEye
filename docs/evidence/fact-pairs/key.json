@@ -1,0 +1,191 @@
+{
+ "drawn": "2026-11-06 12:07",
+ "seed": 20261106,
+ "stories": 59,
+ "pool": {
+  "kept": 28,
+  "split": 72
+ },
+ "pairs": [
+  {
+   "pair": 1,
+   "story": 1260,
+   "relation": "second_more",
+   "kept": true
+  },
+  {
+   "pair": 2,
+   "story": 1401,
+   "relation": "second_more",
+   "kept": true
+  },
+  {
+   "pair": 3,
+   "story": 1305,
+   "relation": "first_more",
+   "kept": true
+  },
+  {
+   "pair": 4,
+   "story": 1305,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 5,
+   "story": 1374,
+   "relation": "first_more",
+   "kept": true
+  },
+  {
+   "pair": 6,
+   "story": 1326,
+   "relation": "first_more",
+   "kept": true
+  },
+  {
+   "pair": 7,
+   "story": 1260,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 8,
+   "story": 1260,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 9,
+   "story": 1253,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 10,
+   "story": 1383,
+   "relation": "same",
+   "kept": true
+  },
+  {
+   "pair": 11,
+   "story": 1260,
+   "relation": "first_more",
+   "kept": true
+  },
+  {
+   "pair": 12,
+   "story": 1332,
+   "relation": "first_more",
+   "kept": true
+  },
+  {
+   "pair": 13,
+   "story": 1305,
+   "relation": "first_more",
+   "kept": true
+  },
+  {
+   "pair": 14,
+   "story": 1292,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 15,
+   "story": 1402,
+   "relation": "second_more",
+   "kept": true
+  },
+  {
+   "pair": 16,
+   "story": 1295,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 17,
+   "story": 1399,
+   "relation": "second_more",
+   "kept": true
+  },
+  {
+   "pair": 18,
+   "story": 1326,
+   "relation": "second_more",
+   "kept": true
+  },
+  {
+   "pair": 19,
+   "story": 1301,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 20,
+   "story": 1350,
+   "relation": "first_more",
+   "kept": true
+  },
+  {
+   "pair": 21,
+   "story": 1384,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 22,
+   "story": 1292,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 23,
+   "story": 1332,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 24,
+   "story": 1373,
+   "relation": "same",
+   "kept": true
+  },
+  {
+   "pair": 25,
+   "story": 1295,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 26,
+   "story": 1331,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 27,
+   "story": 1260,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 28,
+   "story": 1293,
+   "relation": "same",
+   "kept": true
+  },
+  {
+   "pair": 29,
+   "story": 1332,
+   "relation": "different",
+   "kept": false
+  },
+  {
+   "pair": 30,
+   "story": 1252,
+   "relation": "different",
+   "kept": false
+  }
+ ]
+}

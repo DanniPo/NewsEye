@@ -32,7 +32,10 @@ def differences(analysis):
     """{"score", "reasons", and each count} for one analysed story."""
     groups = analysis.get("consensus") or []
     related = sum(1 for g in groups if g.get("related"))
-    figures = sum(1 for g in digest_groups(analysis.get("figure_digest") or [])
+    # only counted, so the groups need no ordering by meaning: rank=False keeps the
+    # language model out of every story list (it took about 20 s to load on the
+    # first list after the API started)
+    figures = sum(1 for g in digest_groups(analysis.get("figure_digest") or [], rank=False)
                   if len({v["figure"] for v in g["values"]}) > 1)
     quotes = sum(1 for remark in analysis.get("quotes") or []
                  for v in remark["versions"] if v["relation"] in CHANGED)
