@@ -225,3 +225,9 @@ REPORTING_VERBS = {
     "urged or warned": ("urge", "call on", "call for", "appeal", "ask", "implore",
                         "plead", "warn", "caution", "direct", "order", "demand", "threaten"),
 }
+
+# --- the scheduled pipeline ---
+# Names the PostgreSQL advisory lock a pipeline run holds from start to finish
+# (backend/pipeline.py). Any fixed number: it is not a secret. The web API looks
+# for it, read-only, so an open page refreshes after a run, not half-way through.
+PIPELINE_LOCK_KEY = 72_310_401

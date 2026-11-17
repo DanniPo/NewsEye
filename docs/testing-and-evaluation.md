@@ -589,9 +589,9 @@ sleeping mid-run.*
   marked, what it shows as one fact is one fact 14 times in 15, but it shows about
   two-thirds of shared facts only as "said something related". A reader sees fewer
   facts in common than the outlets have, never an omission that did not happen.
-  A looser rule, such as entailment in one direction rather than both or a lower
-  `NLI_ENTAILS`, would trade some of that precision for coverage. No looser
-  setting has been measured.
+  A pair is already kept when either sentence implies the other; it is split only
+  when neither does at `NLI_ENTAILS` (0.5). A lower threshold would trade some of
+  that precision for coverage. No other setting has been measured.
 - **Tone is the least certain reading on the site.** Targeted sentiment clearly
   beat sentence tone on NewsMTSC. On Kenyan people it stays ahead, but not
   conclusively, and it scores lower than on NewsMTSC. One fine-tuning run on 161

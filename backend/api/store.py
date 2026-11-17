@@ -25,7 +25,12 @@ from backend.analysis.contention import LISTED, contention
 from backend.analysis.digest import cited_authority, digest_groups, summarise
 from backend.analysis.divergence import differences
 from backend.analysis.verbs import family_of
-from backend.config import CLUSTER_MIN_COHERENCE, FALLBACK_LABEL, RSS_FEEDS
+from backend.config import (
+    CLUSTER_MIN_COHERENCE,
+    FALLBACK_LABEL,
+    PIPELINE_LOCK_KEY,
+    RSS_FEEDS,
+)
 from backend.db.connection import DB_CONFIG
 from backend.scripts.build_site import (
     STATE_MEDIA,
@@ -328,6 +333,10 @@ class Store:
 
     # ------------------------------------------------------------------ reads
     def health(self):
+        """Counts and the time of each stage's latest write, so an open page can tell
+        that something new was stored; and whether a pipeline run holds its lock in
+        this database, so the page waits for the run to finish. pg_locks is only
+        read: looking for the lock never takes it."""
         with self.cursor() as cur:
             cur.execute("""
                 SELECT (SELECT count(*) FROM articles) AS articles,
@@ -336,14 +345,23 @@ class Store:
                          WHERE sources_used IS NOT NULL) AS analysed,
                        (SELECT max(inserted_at_utc) FROM articles) AS last_article,
                        (SELECT max(clustered_at) FROM clusters) AS last_clustered,
+                       (SELECT max(analyzed_at) FROM cluster_analysis
+                         WHERE sources_used IS NOT NULL) AS last_analysed,
+                       EXISTS (SELECT 1 FROM pg_locks
+                               WHERE locktype = 'advisory' AND granted
+                                 AND database = (SELECT oid FROM pg_database
+                                                 WHERE datname = current_database())
+                                 AND classid::bigint = 0 AND objsubid = 1
+                                 AND objid::bigint = %(key)s) AS pipeline_running,
                        to_regclass('people') IS NOT NULL AS people_table
-            """)
+            """, {"key": PIPELINE_LOCK_KEY})
             row = dict(cur.fetchone())
-            people = None
+            people, people_built = None, None
             if row.pop("people_table"):
-                cur.execute("SELECT count(*) AS n FROM people")
-                people = cur.fetchone()["n"]
-        return {**row, "people": people}
+                cur.execute("SELECT count(*) AS n, max(built_at) AS built FROM people")
+                found = cur.fetchone()
+                people, people_built = found["n"], found["built"]
+        return {**row, "people": people, "people_built": people_built}
 
     def stories(self, limit, offset, min_outlets, sort="outlets", topic=None, source=None):
         """(total, one page of stories), most outlets first unless sort says otherwise,
@@ -387,6 +405,38 @@ class Store:
             """, params)
             rows = cur.fetchall()
         return {"days": days, "until": until, "items": rank_contested(rows, limit)}
+
+    def most_covered(self, days, limit):
+        """The stories the most outlets wrote about in the last `days` days: ranked
+        by outlets with an article in that window, then by those articles. A count
+        of coverage, not of readers - Newseye records no readers. The days count
+        back from the newest article stored, as on the Contested page, and a story
+        needs two outlets in the window, as everywhere else."""
+        params = story_params(days=days, limit=limit)
+        with self.cursor() as cur:
+            cur.execute("SELECT max(published_utc) AS until FROM articles")
+            until = cur.fetchone()["until"]
+            cur.execute(f"""
+                SELECT s.*, {CARD_COLUMNS}, w.window_outlets, w.window_articles
+                FROM ({STORY_SQL}) s
+                JOIN (SELECT cm.cluster_id,
+                             count(DISTINCT a.source_name) AS window_outlets,
+                             count(*) AS window_articles
+                      FROM cluster_members cm
+                      JOIN articles a ON a.id = cm.article_id
+                      WHERE a.published_utc >= (SELECT max(published_utc) FROM articles)
+                                               - make_interval(days => %(days)s)
+                      GROUP BY cm.cluster_id) w ON w.cluster_id = s.id
+                LEFT JOIN cluster_analysis ca ON ca.cluster_id = s.id
+                WHERE w.window_outlets >= 2
+                ORDER BY w.window_outlets DESC, w.window_articles DESC,
+                         s.latest DESC NULLS LAST, s.id
+                LIMIT %(limit)s
+            """, params)
+            rows = cur.fetchall()
+        items = [{**card(r), "window_outlets": r["window_outlets"],
+                  "window_articles": r["window_articles"]} for r in rows]
+        return {"days": days, "until": until, "items": items}
 
     def topics(self):
         """How many published multi-outlet stories each topic has."""

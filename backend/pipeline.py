@@ -35,10 +35,12 @@ from datetime import UTC, datetime, timedelta
 
 import psycopg2
 
+from backend.config import PIPELINE_LOCK_KEY
 from backend.db.connection import DB_CONFIG
 
-# any fixed number: it names the lock, it is not a secret
-LOCK_KEY = 72_310_401
+# names the lock a run holds; the web API looks for it to tell an open page when
+# a run has finished (backend/api/store.py, health)
+LOCK_KEY = PIPELINE_LOCK_KEY
 # the people pages are rebuilt once a day: a person's portrayal moves slowly,
 # and rebuilding means parsing and scoring every headline that names them
 PEOPLE_EVERY = timedelta(hours=24)

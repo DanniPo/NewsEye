@@ -79,8 +79,9 @@ SOURCE = {"slug": "capital-fm", "name": "Capital FM", "website": "https://www.ca
 class FakeStore:
     """Answers like Store; `fail` makes every read raise that exception."""
 
-    def __init__(self, fail=None, people_built=True):
+    def __init__(self, fail=None, people_built=True, running=False):
         self.fail, self.people_built, self.calls = fail, people_built, []
+        self.running = running
 
     def _check(self, name):
         self.calls.append(name)
@@ -90,7 +91,14 @@ class FakeStore:
     def health(self):
         self._check("health")
         return {"articles": 7551, "stories": 261, "analysed": 40, "people": 50,
-                "last_article": NOW, "last_clustered": NOW}
+                "last_article": NOW, "last_clustered": NOW, "last_analysed": NOW,
+                "people_built": NOW, "pipeline_running": self.running}
+
+    def most_covered(self, days, limit):
+        self._check("most_covered")
+        self.days = days
+        return {"days": days, "until": NOW, "items": [
+            {**SUMMARY, "window_outlets": 4, "window_articles": 6}][:limit]}
 
     def stories(self, limit, offset, min_outlets, sort="outlets", topic=None, source=None):
         self._check("stories")
@@ -582,6 +590,35 @@ def results():
           r.status_code == 200 and len(body["analysis"]["numbers"]["groups"]) == 1
           and body["people"] == [{"id": "william-ruto", "name": "William Ruto"}], "FR-06, FR-07")
 
+    # ------------------- refreshing an open page; the most covered stories
+    # (added after the record of 8 November: appended, so earlier ids keep theirs)
+    idle = get(FakeStore(), "/api/health").json()
+    busy = get(FakeStore(running=True), "/api/health").json()
+    check("health says whether a pipeline run is still going, and when stories were "
+          "last compared", "running False then True; last compared given",
+          f"running {idle.get('pipeline_running')} then {busy.get('pipeline_running')}; "
+          f"last compared {'given' if idle.get('last_analysed') else 'missing'}",
+          idle.get("pipeline_running") is False and busy.get("pipeline_running") is True
+          and idle.get("last_analysed") is not None, "NFR-02")
+
+    fake = FakeStore()
+    r = get(fake, "/api/most-covered?days=7&limit=3")
+    body = r.json()
+    item = body["items"][0] if body.get("items") else {}
+    check("most covered: stories ranked by outlets in the window, with what was counted",
+          "200, 7 days, 4 outlets and 6 articles in the window",
+          f"{r.status_code}, {body.get('days')} days, {item.get('window_outlets')} outlets and "
+          f"{item.get('window_articles')} articles in the window",
+          r.status_code == 200 and body["days"] == 7 and fake.days == 7
+          and item.get("window_outlets") == 4 and item.get("window_articles") == 6, "FR-08")
+
+    codes = [get(FakeStore(), f"/api/most-covered?{q}").status_code
+             for q in ("days=0", "days=8", "limit=0", "limit=21", "days=one")]
+    r = get(FakeStore(), "/api/most-covered")
+    check("most covered refuses windows and lengths outside its limits; defaults to a day",
+          "422 x5; default 1 day", f"{codes}; default {r.json().get('days')} day",
+          codes == [422] * 5 and r.json().get("days") == 1, "FR-08")
+
     app.dependency_overrides.clear()
     return rows
 
@@ -729,6 +766,15 @@ def live_results():
                          sorted(numbers) == ["groups", "solo", "ungrouped"]
                          and isinstance(body.get("people"), list)
                          and "who" not in credits, trace="FR-06, FR-07"))
+    # added after the record of 8 November, before role_case so it stays last
+    r = api.get("/api/most-covered?days=7&limit=5")
+    body = r.json() if r.status_code == 200 else {}
+    windows = [(s["window_outlets"], s["window_articles"]) for s in body.get("items", [])]
+    rows.append(case("live: most covered, ranked by outlets in the window, two or more each",
+                     "200, ranked, every story with 2+ outlets in the window",
+                     f"{r.status_code}, {windows}",
+                     r.status_code == 200 and windows == sorted(windows, reverse=True)
+                     and all(o >= 2 for o, _ in windows), trace="FR-08"))
     rows.append(role_case())
     return rows
 

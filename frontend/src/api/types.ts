@@ -42,6 +42,32 @@ export interface ContestedPage {
   items: ContestedStory[]
 }
 
+/** A story with how many outlets, and articles, covered it inside the window. */
+export interface CoveredStory extends StorySummary {
+  window_outlets: number
+  window_articles: number
+}
+
+export interface CoveredPage {
+  days: number
+  until: Iso | null
+  items: CoveredStory[]
+}
+
+/** What the database holds, when each stage last wrote, and whether a run is going. */
+export interface Health {
+  status: string
+  articles: number
+  stories: number
+  analysed: number
+  people: number | null
+  last_article: Iso | null
+  last_clustered: Iso | null
+  last_analysed?: Iso | null
+  people_built?: Iso | null
+  pipeline_running?: boolean
+}
+
 export interface Topic {
   topic: string
   stories: number

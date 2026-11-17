@@ -3,7 +3,9 @@
 
 import type {
   ContestedPage,
+  CoveredPage,
   Figure,
+  Health,
   Person,
   PersonSummary,
   SearchResults,
@@ -62,6 +64,20 @@ export const CARD_WAITING: StorySummary = {
 }
 
 export const PAGE: StoryPage = { total: 14, limit: 12, offset: 0, items: [CARD, CARD_ONE_READABLE, CARD_WAITING] }
+
+export const HEALTH: Health = {
+  status: 'ok', articles: 2985, stories: 14, analysed: 9, people: 54,
+  last_article: NOW, last_clustered: NOW, last_analysed: NOW, people_built: NOW, pipeline_running: false,
+}
+
+export const COVERED_DAY: CoveredPage = {
+  days: 1, until: NOW, items: [{ ...CARD, window_outlets: 3, window_articles: 4 }],
+}
+
+export const COVERED_WEEK: CoveredPage = {
+  days: 7, until: NOW,
+  items: [{ ...CARD_ONE_READABLE, window_outlets: 5, window_articles: 9 }, { ...CARD, window_outlets: 3, window_articles: 4 }],
+}
 
 export const TOPICS: Topic[] = [
   { topic: 'General', stories: 5 },
