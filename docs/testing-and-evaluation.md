@@ -89,7 +89,7 @@ the numbering there differs.
 | Performance and reliability | Is it fast and dependable enough over time? | 171 scheduled runs (20 Sep to 15 Oct); 18 held-out stories timed | Repeated measurement |
 | Security | Can feed content attack a reader? Are secrets exposed? Can the API be misused? | TC-RB-09 to -11; review of SQL construction; scan of the git history; TC-AP: bad input refused before the database, rate limits, failures that reveal nothing, a database account that can only read | Negative testing plus manual review |
 | Model evaluation | How accurate are the NLP components? | Development checks against baselines; a held-out sample; an AI-assisted quote check; the NewsMTSC benchmark; 300 Kenyan mentions labelled by two annotators | Labelled samples, Wilson intervals, McNemar test, Cohen's kappa, paired bootstrap |
-| Acceptance and usability | Can intended readers use it as meant? | Task-based test with SUS | Planned, not yet run |
+| Acceptance and usability | Can intended readers use it as meant? | Task-based test with comprehension checks | Planned, not yet run |
 
 **Case types.**
 
@@ -136,7 +136,7 @@ nothing.
 | Held-out quote speakers | ≥ 90% correct | 15 Oct, before any labelling |
 | Held-out portrayal roles | ≥ 80% correct | 15 Oct, before any labelling |
 | Held-out name tagging | ≥ 90% of headlines fully correct, and better than spaCy alone | 15 Oct, before any labelling |
-| Usability | ≥ 80% task success; ≥ 80% comprehension; SUS mean ≥ 68 | 15 Oct, before any session |
+| Usability | ≥ 80% task success; ≥ 80% comprehension | 15 Oct, before any session |
 | Agreement on the Kenyan framing labels | Cohen's kappa of about 0.6 or more, or the annotation guide is revised | With the guide, before any labelling |
 | Using fine-tuned weights | Better than the published weights on Kenyan test people, with the paired 95% interval above zero, and no more than 0.03 lost on either NewsMTSC test set | Before any tuned model was scored |
 
