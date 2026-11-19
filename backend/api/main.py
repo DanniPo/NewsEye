@@ -60,6 +60,11 @@ class Health(BaseModel):
     people: int | None
     last_article: datetime | None
     last_clustered: datetime | None
+    # what an open page compares to know a run stored something new, and whether
+    # a run is still going, so it refreshes once the run has finished
+    last_analysed: datetime | None = None
+    people_built: datetime | None = None
+    pipeline_running: bool = False
 
 
 class Differences(BaseModel):
@@ -104,6 +109,17 @@ class ContestedPage(BaseModel):
     days: int
     until: datetime | None
     items: list[ContestedStory]
+
+
+class CoveredStory(StorySummary):
+    window_outlets: int
+    window_articles: int
+
+
+class CoveredPage(BaseModel):
+    days: int
+    until: datetime | None
+    items: list[CoveredStory]
 
 
 class Topic(BaseModel):
@@ -435,6 +451,14 @@ def contested(store: StoreDep, limit: int = Query(20, ge=1, le=100),
     """The latest stories whose coverage reports a dispute, most contested first, each
     with what was counted. What the stories report, not which outlet is right."""
     return store.contested(limit, days)
+
+
+@app.get("/api/most-covered", response_model=CoveredPage)
+def most_covered(store: StoreDep, days: int = Query(1, ge=1, le=7),
+                 limit: int = Query(5, ge=1, le=20)):
+    """The stories the most outlets wrote about in the last day or days, counted back
+    from the newest article. Coverage, not readership: Newseye records no readers."""
+    return store.most_covered(days, limit)
 
 
 @app.get("/api/topics", response_model=list[Topic])

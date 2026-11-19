@@ -1,5 +1,7 @@
 import type {
   ContestedPage,
+  CoveredPage,
+  Health,
   Person,
   PersonSummary,
   SearchResults,
@@ -152,6 +154,9 @@ export const api = {
     getJson<StoryPage>('/stories', { ...query }, options),
   contested: (query: { limit?: number; days?: number }, options?: Options) =>
     getJson<ContestedPage>('/contested', query, options),
+  mostCovered: (query: { days: number; limit?: number }, options?: Options) =>
+    getJson<CoveredPage>('/most-covered', query, options),
+  health: (options?: Options) => getJson<Health>('/health', undefined, options),
   topics: (options?: Options) => getJson<Topic[]>('/topics', undefined, options),
   story: (id: number, options?: Options) => getJson<Story>(`/stories/${id}`, undefined, options),
   search: (q: string, limit: number, options?: Options) =>

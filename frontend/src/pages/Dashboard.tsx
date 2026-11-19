@@ -4,7 +4,7 @@ import { Link, useLoaderData, useLocation, useNavigate } from 'react-router'
 import type { LoaderFunctionArgs } from 'react-router'
 
 import { api } from '../api/client'
-import type { PersonSummary, SourceSummary, StoryPage, StorySort, StorySummary, Topic } from '../api/types'
+import type { CoveredPage, PersonSummary, SourceSummary, StoryPage, StorySort, StorySummary, Topic } from '../api/types'
 import { Avatar, CountUp } from '../components/Bits'
 import { ArrowIcon, CloseIcon } from '../components/Icons'
 import { StoryCard } from '../components/StoryCard'
@@ -13,6 +13,8 @@ import { useIntroCycle } from '../lib/motion'
 
 /** stories per page of the list; "Show more" adds the next page */
 export const PAGE = 12
+/** stories in each "Most covered" list */
+const COVERED = 5
 
 const SORTS: { id: StorySort; label: string }[] = [
   { id: 'outlets', label: 'Most outlets' },
@@ -30,15 +32,17 @@ export async function dashboardLoader({ request }: LoaderFunctionArgs) {
   const topic = params.get('topic') || null
   const source = params.get('source') || null
   const signal = request.signal
-  const [stories, topics, sources, latest, people] = await Promise.all([
+  const [stories, topics, sources, latest, people, coveredDay, coveredWeek] = await Promise.all([
     api.stories({ limit: PAGE, sort, topic, source }, { signal }),
     api.topics({ signal }),
     api.sources({ signal }),
     // the side panels are extras: the page stands without them
     api.stories({ limit: 4, sort: 'latest' }, { signal }).catch(() => null),
     api.people({ signal }).catch(() => null),
+    api.mostCovered({ days: 1, limit: COVERED }, { signal }).catch(() => null),
+    api.mostCovered({ days: 7, limit: COVERED }, { signal }).catch(() => null),
   ])
-  return { stories, topics, sources, latest, people, sort, topic, source }
+  return { stories, topics, sources, latest, people, covered: { day: coveredDay, week: coveredWeek }, sort, topic, source }
 }
 
 type Data = Awaited<ReturnType<typeof dashboardLoader>>
@@ -177,7 +181,9 @@ function StoryList({ data }: { data: Data }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<{ search: string; text: string } | null>(null)
   const page: StoryPage = data.stories
-  const extra = added.search === location.search ? added.items : []
+  // after a refresh the first page may already hold a story "Show more" added
+  const first = new Set(page.items.map((s) => s.id))
+  const extra = (added.search === location.search ? added.items : []).filter((s) => !first.has(s.id))
   const items = [...page.items, ...extra]
   const sourceName = data.source ? data.sources.find((s) => s.slug === data.source)?.name ?? data.source : null
 
@@ -230,6 +236,52 @@ function StoryList({ data }: { data: Data }) {
         </div>
       )}
     </div>
+  )
+}
+
+const WINDOWS = [
+  { id: 'day', label: 'Last 24 hours', within: 'in 24 hours' },
+  { id: 'week', label: 'Last 7 days', within: 'in 7 days' },
+] as const
+
+/**
+ * The stories the most outlets wrote about, over a day or a week. Newseye records
+ * no readers, so this counts coverage, and says so.
+ */
+function MostCovered({ day, week }: { day: CoveredPage | null; week: CoveredPage | null }) {
+  const [active, setActive] = useState<'day' | 'week'>('day')
+  if (!day && !week) return null
+  const range = WINDOWS.find((w) => w.id === active)!
+  const items = (active === 'day' ? day : week)?.items ?? []
+  return (
+    <section className="panel" aria-labelledby="most-covered">
+      <h4 id="most-covered">Most covered</h4>
+      <p className="sub">The stories the most outlets wrote about. A count of coverage, not of readers.</p>
+      <div className="sorts" role="group" aria-label="Most covered over">
+        {WINDOWS.map((w) => (
+          <button key={w.id} type="button" className={active === w.id ? 'on' : undefined}
+            aria-pressed={active === w.id} onClick={() => setActive(w.id)}>
+            {w.label}
+          </button>
+        ))}
+      </div>
+      {items.length ? (
+        <ol className="latest covered">
+          {items.map((s) => (
+            <li key={s.id}>
+              <Link to={`/stories/${s.id}`} viewTransition>
+                <span>
+                  <b>{trim(s.headline ?? 'Untitled story', 72)}</b>
+                  <small>{plural(s.window_outlets, 'outlet')} · {plural(s.window_articles, 'article')} {range.within}</small>
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="hint">No story was covered by two or more outlets {range.within}.</p>
+      )}
+    </section>
   )
 }
 
@@ -316,6 +368,7 @@ export function Dashboard() {
       <div className="cols">
         <StoryList data={data} />
         <div>
+          <MostCovered day={data.covered.day} week={data.covered.week} />
           <LatestPanel stories={data.latest?.items ?? []} />
           <PeoplePanel people={data.people ?? []} />
           <About sources={data.sources} />

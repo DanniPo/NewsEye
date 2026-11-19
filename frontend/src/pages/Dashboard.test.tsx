@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { mockApi, renderAt } from '../test/api'
+import { clearCache } from '../api/client'
+import { json, mockApi, renderAt } from '../test/api'
 import { CARD, PAGE } from '../test/fixtures'
 
 describe('the dashboard', () => {
@@ -87,5 +88,35 @@ describe('the dashboard', () => {
     const box = (await screen.findByText('How it works', { selector: 'summary' })).closest('details')!
     await waitFor(() => expect(box).toHaveAttribute('open'))
     expect(box).toHaveTextContent('Some sites could not always be opened (paywall or blocked): K24 Digital and KBC.')
+  })
+
+  it('ranks the most covered stories over a day or a week, as coverage, not readers', async () => {
+    const { calls } = mockApi()
+    const { user } = renderAt('/')
+    const panel = await screen.findByRole('region', { name: 'Most covered' })
+    expect(panel).toHaveTextContent('A count of coverage, not of readers.')
+    expect(within(panel).getByRole('button', { name: 'Last 24 hours' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(panel).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/stories/1387'])
+    expect(panel).toHaveTextContent('3 outlets · 4 articles in 24 hours')
+
+    await user.click(within(panel).getByRole('button', { name: 'Last 7 days' }))
+    expect(within(panel).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/stories/1402', '/stories/1387'])
+    expect(panel).toHaveTextContent('5 outlets · 9 articles in 7 days')
+    const asked = calls.filter((u) => u.pathname === '/api/most-covered').map((u) => u.searchParams.get('days'))
+    expect(asked.sort()).toEqual(['1', '7'])
+  })
+
+  it('says so when no story was covered by two outlets in the window, and stands without the panel', async () => {
+    mockApi({ '/api/most-covered': (url: URL) => ({ days: Number(url.searchParams.get('days')), until: null, items: [] }) })
+    renderAt('/')
+    const panel = await screen.findByRole('region', { name: 'Most covered' })
+    expect(panel).toHaveTextContent('No story was covered by two or more outlets in 24 hours.')
+    cleanup()
+    clearCache()
+
+    mockApi({ '/api/most-covered': () => json({ detail: 'No such thing' }, 404) })
+    renderAt('/')
+    await screen.findByRole('heading', { name: CARD.headline! })
+    expect(screen.queryByRole('region', { name: 'Most covered' })).toBeNull()
   })
 })

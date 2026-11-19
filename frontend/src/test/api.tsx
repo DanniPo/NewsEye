@@ -9,6 +9,9 @@ import { vi } from 'vitest'
 import { routes } from '../routes'
 import {
   CONTESTED,
+  COVERED_DAY,
+  COVERED_WEEK,
+  HEALTH,
   PAGE,
   PEOPLE,
   PERSON,
@@ -31,6 +34,8 @@ export const DEFAULTS: Record<string, Answer> = {
   '/api/people': PEOPLE,
   '/api/people/william-ruto': PERSON,
   '/api/search': RESULTS,
+  '/api/health': HEALTH,
+  '/api/most-covered': (url: URL) => (url.searchParams.get('days') === '7' ? COVERED_WEEK : COVERED_DAY),
 }
 
 export function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {

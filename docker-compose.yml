@@ -1,0 +1,117 @@
+# Newseye on one server: the database, the scheduled pipeline, the read-only API,
+# daily backups, and Caddy in front with HTTPS. On the server:
+#
+#   cp deploy/env.example .env      # then fill it in
+#   docker compose up -d --build
+#
+# deploy/README.md has the whole procedure, checks, updates and restores.
+# On a laptop, `docker compose up -d db` alone gives PostgreSQL with pgvector on
+# port 5433 (README.md, Setup).
+
+name: newseye
+
+x-app: &app
+  build: { context: ., dockerfile: deploy/Dockerfile, target: app }
+  image: newseye-app
+  restart: unless-stopped
+  init: true
+  depends_on:
+    db: { condition: service_healthy }
+
+x-db: &db
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_NAME: ${DB_NAME:-newseye}
+
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_DB: ${DB_NAME:-newseye}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    # this machine only: never reachable from the internet
+    ports:
+      - "127.0.0.1:${NEWSEYE_DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${DB_NAME:-newseye}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  pipeline:
+    <<: *app
+    command: ["sh", "deploy/run-pipeline.sh"]
+    environment:
+      <<: *db
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      # required here too: without it backend/db/api_role.py stops the service
+      NEWSEYE_API_DB_PASSWORD: ${NEWSEYE_API_DB_PASSWORD:-}
+      NEWSEYE_EVERY_HOURS: ${NEWSEYE_EVERY_HOURS:-2}
+    volumes:
+      - pipeline-data:/data
+      - logs:/app/logs
+
+  api:
+    <<: *app
+    # Caddy is the only client, so the reader's address comes from its
+    # X-Forwarded-For header; the rate limits are per reader, not per proxy
+    command: ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000",
+              "--proxy-headers", "--forwarded-allow-ips", "*"]
+    environment:
+      <<: *db
+      # the read-only account the pipeline service creates (backend/db/api_role.py)
+      NEWSEYE_API_DB_USER: newseye_api
+      NEWSEYE_API_DB_PASSWORD: ${NEWSEYE_API_DB_PASSWORD}
+      NEWSEYE_API_ORIGINS: https://${NEWSEYE_DOMAIN:-localhost}
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+  backup:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    entrypoint: ["sh", "/backup.sh"]
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: ${DB_PASSWORD}
+      PGDATABASE: ${DB_NAME:-newseye}
+      NEWSEYE_BACKUPS_KEPT: ${NEWSEYE_BACKUPS_KEPT:-7}
+    volumes:
+      - ./deploy/backup.sh:/backup.sh:ro
+      - ./backups:/backups
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    build: { context: ., dockerfile: deploy/Dockerfile, target: web }
+    image: newseye-web
+    restart: unless-stopped
+    environment:
+      NEWSEYE_DOMAIN: ${NEWSEYE_DOMAIN:-localhost}
+      NEWSEYE_ACCESS: ${NEWSEYE_ACCESS:-private}
+      NEWSEYE_LOGIN_USER: ${NEWSEYE_LOGIN_USER:-reviewer}
+      NEWSEYE_LOGIN_HASH: ${NEWSEYE_LOGIN_HASH:-}
+    ports:
+      - "${NEWSEYE_HTTP_PORT:-80}:80"
+      - "${NEWSEYE_HTTPS_PORT:-443}:443"
+      - "${NEWSEYE_HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  pipeline-data:
+  logs:
+  caddy-data:
+  caddy-config:

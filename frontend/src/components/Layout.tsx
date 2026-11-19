@@ -1,5 +1,6 @@
 import { Form, NavLink, Outlet, ScrollRestoration, useLocation, useNavigation } from 'react-router'
 
+import { useFreshness } from '../lib/freshness'
 import { EyeIcon, FlameIcon, GridIcon, InfoIcon, PaperIcon, PersonIcon, SearchIcon } from './Icons'
 
 // Six places, each a page a reader can name. Sources is new in this version: who
@@ -66,12 +67,32 @@ function Progress() {
   )
 }
 
+/**
+ * Says when a finished pipeline run has refreshed the page, or, on a story or a
+ * person the reader is in the middle of, that newer results are in.
+ */
+function Freshness() {
+  const { state, refresh } = useFreshness()
+  return (
+    <div className="fresh" role="status" aria-live="polite">
+      {state === 'updated' && <p>Updated with the latest stories</p>}
+      {state === 'waiting' && (
+        <p>
+          Newer results are in.{' '}
+          <button type="button" onClick={refresh}>Refresh this page</button>
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function Layout() {
   return (
     <div className="app">
       <Rail />
       <div className="main">
         <Progress />
+        <Freshness />
         <TopBar />
         <main className="content" id="content">
           <Outlet />

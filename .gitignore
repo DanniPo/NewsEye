@@ -27,6 +27,8 @@ cluster_visualization.png
 # Per-machine tool permissions, not project configuration.
 .claude/settings.local.json
 .env
+# the server's daily database dumps (deploy/backup.sh): they hold outlets' headlines
+backups/
 # --- editor / OS ---------------------------------------------------------
 .vscode/
 .idea/
@@ -42,9 +44,14 @@ dist/
 # app's frontend/index.html is source.
 site/
 
-# --- report drafts -------------------------------------------------------
-# Chapter 5 and its appendices, as Word and PDF drafts, kept out of the
-# repository. docs/testing-and-evaluation.md is the tracked record they draw on.
+# --- documents -----------------------------------------------------------
+# Word and PDF files stay out of the repository wherever they are: report
+# chapters and appendices, slides, scope and presentation notes. The Markdown
+# records in docs/ (testing-and-evaluation.md and docs/evidence/) are the
+# tracked versions they draw on.
+*.doc
+*.docx
+*.pdf
 docs/Newseye_Chapter_5*
 # Word's lock files, left beside a document while it is open
 ~$*

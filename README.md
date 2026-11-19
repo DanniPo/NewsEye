@@ -168,6 +168,22 @@ agree. They group, label and order things; the reader interprets them.
 Requires **PostgreSQL with the pgvector extension** (developed on 0.8.2) and
 Python 3.13.
 
+To run Newseye on a server instead, with HTTPS, a schedule and daily backups,
+see **[deploy/README.md](deploy/README.md)**: one `docker compose` command, no
+other setup.
+
+pgvector has to be built from source on Windows. If you have Docker, the
+repository's compose file gives you PostgreSQL with pgvector instead, on port
+5433 so it never collides with a local PostgreSQL:
+
+```bash
+export DB_PASSWORD=...           # Windows: $env:DB_PASSWORD = "..."
+docker compose up -d db          # database "newseye", reachable from this machine only
+export DB_PORT=5433 DB_NAME=newseye   # Windows: $env:DB_PORT = "5433"; $env:DB_NAME = "newseye"
+```
+
+Then skip the `CREATE DATABASE` step below.
+
 ```bash
 python -m venv .venv
 .venv/Scripts/activate          # Linux/macOS: source .venv/bin/activate
@@ -190,8 +206,9 @@ python -m backend.db.migrations
 That one command creates the pgvector extension, all four tables and every
 index, and is safe to re-run. Nothing else is needed to get a working schema.
 
-Connection settings other than the password are in `backend/db/connection.py`;
-feeds, thresholds and model names are in `backend/config.py`.
+The connection defaults to user `postgres` on `localhost:5432`; set `DB_USER`,
+`DB_HOST`, `DB_PORT` and `DB_NAME` to change them (`backend/db/connection.py`).
+Feeds, thresholds and model names are in `backend/config.py`.
 
 The ~1.5GB of models are downloaded from HuggingFace on first use and cached in
 `~/.cache/huggingface` — outside the repository and outside any synced folder.
@@ -281,9 +298,10 @@ python -m backend.scripts.test_api      # no database needed; --live adds the re
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/health` | Database counts and the time of the last run |
+| `GET /api/health` | Database counts, when each stage last stored something, and whether a pipeline run is going (its lock, read without taking it) |
 | `GET /api/stories?limit=&offset=&min_outlets=&sort=&topic=&source=` | Stories ordered by `outlets`, `differences` or `latest`, only one topic's or one outlet's (by its slug) when asked, with what a story card shows: checkable differences, facts not in every outlet, numbers to compare, unread outlets, and whether two outlets could be compared |
 | `GET /api/contested?limit=&days=` | The latest stories whose coverage reports a dispute, most contested first, each with what was counted |
+| `GET /api/most-covered?days=&limit=` | The stories the most outlets wrote about in the last day (default) or up to 7 days, counted back from the newest article; coverage, not readers |
 | `GET /api/topics` | How many multi-outlet stories each topic has |
 | `GET /api/stories/{id}` | One story: articles, which outlets could be opened, coverage, quotes, figures laid out as the site shows them (groups, then figures with nothing to set beside), framing, and the listed people named in it |
 | `GET /api/search?q=&limit=` | Articles closest in meaning, each with its story |
@@ -329,12 +347,22 @@ story's sections. Every animation stops when the reader's system asks for
 reduced motion, and the headline's opening run of names ends by itself within
 five seconds.
 
+An open page keeps itself current. Every two minutes, and whenever the reader
+returns to the tab, it asks `/api/health` whether a pipeline run has stored
+anything new, and acts only once the run has finished (the API sees the run's
+lock), so nothing is shown half-way through a run. A list reloads its data in
+place and says so for a moment; a story or a person, which the reader may be in
+the middle of, offers "Newer results are in" and reloads only when asked, since
+a re-grouping can end a story. The dashboard's **Most covered** panel ranks the
+stories the most outlets wrote about over the last 24 hours or 7 days: a count
+of coverage, since Newseye records no readers.
+
 ```bash
 uvicorn backend.api.main:app --port 8000     # the API, with DB_PASSWORD set
 cd frontend
 npm ci                                       # Node 22.12 or later
 npm run dev                                  # http://localhost:5173, /api goes to the API
-npm run typecheck && npm test                # 65 component and page tests, fake API
+npm run typecheck && npm test                # 72 component, page and refresh tests, fake API
 npm run e2e                                  # 8 end-to-end tests in Edge, real API and database
 npm run build                                # dist/, static files for any web server
 ```
