@@ -27,6 +27,8 @@ cluster_visualization.png
 # Per-machine tool permissions, not project configuration.
 .claude/settings.local.json
 .env
+# the server's daily database dumps (deploy/backup.sh): they hold outlets' headlines
+backups/
 # --- editor / OS ---------------------------------------------------------
 .vscode/
 .idea/

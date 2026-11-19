@@ -168,6 +168,22 @@ agree. They group, label and order things; the reader interprets them.
 Requires **PostgreSQL with the pgvector extension** (developed on 0.8.2) and
 Python 3.13.
 
+To run Newseye on a server instead, with HTTPS, a schedule and daily backups,
+see **[deploy/README.md](deploy/README.md)**: one `docker compose` command, no
+other setup.
+
+pgvector has to be built from source on Windows. If you have Docker, the
+repository's compose file gives you PostgreSQL with pgvector instead, on port
+5433 so it never collides with a local PostgreSQL:
+
+```bash
+export DB_PASSWORD=...           # Windows: $env:DB_PASSWORD = "..."
+docker compose up -d db          # database "newseye", reachable from this machine only
+export DB_PORT=5433 DB_NAME=newseye   # Windows: $env:DB_PORT = "5433"; $env:DB_NAME = "newseye"
+```
+
+Then skip the `CREATE DATABASE` step below.
+
 ```bash
 python -m venv .venv
 .venv/Scripts/activate          # Linux/macOS: source .venv/bin/activate
@@ -190,8 +206,9 @@ python -m backend.db.migrations
 That one command creates the pgvector extension, all four tables and every
 index, and is safe to re-run. Nothing else is needed to get a working schema.
 
-Connection settings other than the password are in `backend/db/connection.py`;
-feeds, thresholds and model names are in `backend/config.py`.
+The connection defaults to user `postgres` on `localhost:5432`; set `DB_USER`,
+`DB_HOST`, `DB_PORT` and `DB_NAME` to change them (`backend/db/connection.py`).
+Feeds, thresholds and model names are in `backend/config.py`.
 
 The ~1.5GB of models are downloaded from HuggingFace on first use and cached in
 `~/.cache/huggingface` — outside the repository and outside any synced folder.

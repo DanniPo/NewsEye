@@ -1,0 +1,26 @@
+# Newseye's front door. Caddy serves the React pages, passes /api to the API, and
+# gets and renews the HTTPS certificate for NEWSEYE_DOMAIN by itself. The API and
+# the database are reachable only through here.
+{$NEWSEYE_DOMAIN:localhost} {
+	encode zstd gzip
+
+	# private (the default): a login for the whole site; public: none
+	import /etc/caddy/access-{$NEWSEYE_ACCESS:private}.caddy
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv
+		# the React app routes its own pages (/stories/1387 and so on)
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}

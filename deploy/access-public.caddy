@@ -1,0 +1,3 @@
+# NEWSEYE_ACCESS=public: no login. Before choosing this, see "Before going public"
+# in deploy/README.md.
+header X-Newseye-Access public

@@ -7,10 +7,12 @@ from psycopg2.extras import RealDictCursor
 DB_CONFIG = {
     # DB_NAME points every stage at another database, e.g. a copy for testing
     "dbname": os.environ.get("DB_NAME", "articles"),
-    "user": "postgres",
+    # the defaults are a local PostgreSQL; a server (deploy/) or another install
+    # sets DB_USER, DB_HOST and DB_PORT instead
+    "user": os.environ.get("DB_USER", "postgres"),
     "password": os.environ.get("DB_PASSWORD", ""),
-    "host": "localhost",
-    "port": "5432"
+    "host": os.environ.get("DB_HOST", "localhost"),
+    "port": os.environ.get("DB_PORT", "5432"),
 }
 
 @contextmanager

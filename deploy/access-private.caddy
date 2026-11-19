@@ -1,0 +1,5 @@
+# NEWSEYE_ACCESS=private: the browser asks for a login before showing anything.
+# The user name and the password's bcrypt hash come from .env (deploy/README.md).
+basic_auth {
+	{$NEWSEYE_LOGIN_USER} {$NEWSEYE_LOGIN_HASH}
+}
